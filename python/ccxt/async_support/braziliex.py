@@ -192,11 +192,11 @@ class braziliex(Exchange):
                 'funding': {
                     'withdraw': {
                         'active': canWithdraw,
-                        'fee': self.safe_float(currency, 'txWithdrawalFee'),
+                        'fee': self.safe_number(currency, 'txWithdrawalFee'),
                     },
                     'deposit': {
                         'active': canDeposit,
-                        'fee': self.safe_float(currency, 'txDepositFee'),
+                        'fee': self.safe_number(currency, 'txDepositFee'),
                     },
                 },
                 'limits': {
@@ -213,11 +213,11 @@ class braziliex(Exchange):
                         'max': None,
                     },
                     'withdraw': {
-                        'min': self.safe_float(currency, 'MinWithdrawal'),
+                        'min': self.safe_number(currency, 'MinWithdrawal'),
                         'max': math.pow(10, precision),
                     },
                     'deposit': {
-                        'min': self.safe_float(currency, 'minDeposit'),
+                        'min': self.safe_number(currency, 'minDeposit'),
                         'max': None,
                     },
                 },
@@ -263,9 +263,9 @@ class braziliex(Exchange):
             quoteIsFiat = self.safe_integer(quoteCurrency, 'is_fiat', 0)
             minCost = None
             if quoteIsFiat:
-                minCost = self.safe_float(baseCurrency, 'minAmountTradeFIAT')
+                minCost = self.safe_number(baseCurrency, 'minAmountTradeFIAT')
             else:
-                minCost = self.safe_float(baseCurrency, 'minAmountTrade' + uppercaseQuoteId)
+                minCost = self.safe_number(baseCurrency, 'minAmountTrade' + uppercaseQuoteId)
             isActive = self.safe_integer(market, 'active')
             active = (isActive == 1)
             precision = {
@@ -304,27 +304,27 @@ class braziliex(Exchange):
         if market is not None:
             symbol = market['symbol']
         timestamp = self.milliseconds()
-        last = self.safe_float(ticker, 'last')
+        last = self.safe_number(ticker, 'last')
         return {
             'symbol': symbol,
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
-            'high': self.safe_float(ticker, 'highestBid24'),
-            'low': self.safe_float(ticker, 'lowestAsk24'),
-            'bid': self.safe_float(ticker, 'highestBid'),
+            'high': self.safe_number(ticker, 'highestBid24'),
+            'low': self.safe_number(ticker, 'lowestAsk24'),
+            'bid': self.safe_number(ticker, 'highestBid'),
             'bidVolume': None,
-            'ask': self.safe_float(ticker, 'lowestAsk'),
+            'ask': self.safe_number(ticker, 'lowestAsk'),
             'askVolume': None,
             'vwap': None,
             'open': None,
             'close': last,
             'last': last,
             'previousClose': None,
-            'change': self.safe_float(ticker, 'percentChange'),
+            'change': self.safe_number(ticker, 'percentChange'),
             'percentage': None,
             'average': None,
-            'baseVolume': self.safe_float(ticker, 'baseVolume24'),
-            'quoteVolume': self.safe_float(ticker, 'quoteVolume24'),
+            'baseVolume': self.safe_number(ticker, 'baseVolume24'),
+            'quoteVolume': self.safe_number(ticker, 'quoteVolume24'),
             'info': ticker,
         }
 
@@ -344,10 +344,10 @@ class braziliex(Exchange):
         ids = list(response.keys())
         for i in range(0, len(ids)):
             marketId = ids[i]
-            market = self.markets_by_id[marketId]
+            market = self.safe_market(marketId)
             symbol = market['symbol']
             result[symbol] = self.parse_ticker(response[marketId], market)
-        return result
+        return self.filter_by_array(result, 'symbol', symbols)
 
     async def fetch_order_book(self, symbol, limit=None, params={}):
         await self.load_markets()
@@ -359,12 +359,12 @@ class braziliex(Exchange):
 
     def parse_trade(self, trade, market=None):
         timestamp = self.parse8601(self.safe_string_2(trade, 'date_exec', 'date'))
-        price = self.safe_float(trade, 'price')
-        amount = self.safe_float(trade, 'amount')
+        price = self.safe_number(trade, 'price')
+        amount = self.safe_number(trade, 'amount')
         symbol = None
         if market is not None:
             symbol = market['symbol']
-        cost = self.safe_float(trade, 'total')
+        cost = self.safe_number(trade, 'total')
         orderId = self.safe_string(trade, 'order_number')
         type = 'limit'
         side = self.safe_string(trade, 'type')
@@ -404,8 +404,8 @@ class braziliex(Exchange):
             balance = balances[currencyId]
             code = self.safe_currency_code(currencyId)
             account = self.account()
-            account['free'] = self.safe_float(balance, 'available')
-            account['total'] = self.safe_float(balance, 'total')
+            account['free'] = self.safe_number(balance, 'available')
+            account['total'] = self.safe_number(balance, 'total')
             result[code] = account
         return self.parse_balance(result)
 
@@ -422,29 +422,21 @@ class braziliex(Exchange):
         #         "date":"2017-03-12 15:13:33"
         #     }
         #
-        symbol = None
-        if market is None:
-            marketId = self.safe_string(order, 'market')
-            if marketId in self.markets_by_id:
-                market = self.markets_by_id[marketId]
-        if market is not None:
-            symbol = market['symbol']
+        marketId = self.safe_string(order, 'market')
+        symbol = self.safe_symbol(marketId, market, '_')
         timestamp = self.safe_integer(order, 'timestamp')
         if timestamp is None:
             timestamp = self.parse8601(self.safe_string(order, 'date'))
-        price = self.safe_float(order, 'price')
-        cost = self.safe_float(order, 'total', 0.0)
-        amount = self.safe_float(order, 'amount')
-        filledPercentage = self.safe_float(order, 'progress')
+        price = self.safe_number(order, 'price')
+        cost = self.safe_number(order, 'total')
+        amount = self.safe_number(order, 'amount')
+        filledPercentage = self.safe_number(order, 'progress')
         filled = amount * filledPercentage
-        remaining = float(self.amount_to_precision(symbol, amount - filled))
-        info = order
-        if 'info' in info:
-            info = order['info']
         id = self.safe_string(order, 'order_number')
         fee = self.safe_value(order, 'fee')  # propagated from createOrder
         status = 'closed' if (filledPercentage == 1.0) else 'open'
-        return {
+        side = self.safe_string(order, 'type')
+        return self.safe_order({
             'id': id,
             'clientOrderId': None,
             'datetime': self.iso8601(timestamp),
@@ -453,17 +445,20 @@ class braziliex(Exchange):
             'status': status,
             'symbol': symbol,
             'type': 'limit',
-            'side': order['type'],
+            'timeInForce': None,
+            'postOnly': None,
+            'side': side,
             'price': price,
+            'stopPrice': None,
             'cost': cost,
             'amount': amount,
             'filled': filled,
-            'remaining': remaining,
+            'remaining': None,
             'trades': None,
             'fee': fee,
-            'info': info,
+            'info': order,
             'average': None,
-        }
+        })
 
     async def create_order(self, symbol, type, side, amount, price=None, params={}):
         await self.load_markets()
@@ -513,7 +508,7 @@ class braziliex(Exchange):
             'price': self.safe_string(priceParts, 1),
             'total': self.safe_string(totalParts, 1),
             'fee': {
-                'cost': self.safe_float(feeParts, 1),
+                'cost': self.safe_number(feeParts, 1),
                 'currency': self.safe_string(feeParts, 2),
             },
             'progress': '0.0',

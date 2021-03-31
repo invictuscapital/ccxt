@@ -71,9 +71,10 @@ module.exports = class southxchange extends Exchange {
                 },
             },
             'commonCurrencies': {
-                'SMT': 'SmartNode',
-                'MTC': 'Marinecoin',
                 'BHD': 'Bithold',
+                'GHOST': 'GHOSTPRISM',
+                'MTC': 'Marinecoin',
+                'SMT': 'SmartNode',
             },
         });
     }
@@ -113,10 +114,10 @@ module.exports = class southxchange extends Exchange {
             const balance = response[i];
             const currencyId = this.safeString (balance, 'Currency');
             const code = this.safeCurrencyCode (currencyId);
-            const deposited = this.safeFloat (balance, 'Deposited');
-            const unconfirmed = this.safeFloat (balance, 'Unconfirmed');
+            const deposited = this.safeNumber (balance, 'Deposited');
+            const unconfirmed = this.safeNumber (balance, 'Unconfirmed');
             const account = this.account ();
-            account['free'] = this.safeFloat (balance, 'Available');
+            account['free'] = this.safeNumber (balance, 'Available');
             account['total'] = this.sum (deposited, unconfirmed);
             result[code] = account;
         }
@@ -138,16 +139,16 @@ module.exports = class southxchange extends Exchange {
         if (market) {
             symbol = market['symbol'];
         }
-        const last = this.safeFloat (ticker, 'Last');
+        const last = this.safeNumber (ticker, 'Last');
         return {
             'symbol': symbol,
             'timestamp': timestamp,
             'datetime': this.iso8601 (timestamp),
             'high': undefined,
             'low': undefined,
-            'bid': this.safeFloat (ticker, 'Bid'),
+            'bid': this.safeNumber (ticker, 'Bid'),
             'bidVolume': undefined,
-            'ask': this.safeFloat (ticker, 'Ask'),
+            'ask': this.safeNumber (ticker, 'Ask'),
             'askVolume': undefined,
             'vwap': undefined,
             'open': undefined,
@@ -155,9 +156,9 @@ module.exports = class southxchange extends Exchange {
             'last': last,
             'previousClose': undefined,
             'change': undefined,
-            'percentage': this.safeFloat (ticker, 'Variation24Hr'),
+            'percentage': this.safeNumber (ticker, 'Variation24Hr'),
             'average': undefined,
-            'baseVolume': this.safeFloat (ticker, 'Volume24Hr'),
+            'baseVolume': this.safeNumber (ticker, 'Volume24Hr'),
             'quoteVolume': undefined,
             'info': ticker,
         };
@@ -171,16 +172,12 @@ module.exports = class southxchange extends Exchange {
         const result = {};
         for (let i = 0; i < ids.length; i++) {
             const id = ids[i];
-            let symbol = id;
-            let market = undefined;
-            if (id in this.markets_by_id) {
-                market = this.markets_by_id[id];
-                symbol = market['symbol'];
-            }
+            const market = this.safeMarket (id);
+            const symbol = market['symbol'];
             const ticker = tickers[id];
             result[symbol] = this.parseTicker (ticker, market);
         }
-        return result;
+        return this.filterByArray (result, 'symbol', symbols);
     }
 
     async fetchTicker (symbol, params = {}) {
@@ -195,8 +192,8 @@ module.exports = class southxchange extends Exchange {
 
     parseTrade (trade, market) {
         const timestamp = this.safeTimestamp (trade, 'At');
-        const price = this.safeFloat (trade, 'Price');
-        const amount = this.safeFloat (trade, 'Amount');
+        const price = this.safeNumber (trade, 'Price');
+        const amount = this.safeNumber (trade, 'Amount');
         let cost = undefined;
         if (price !== undefined) {
             if (amount !== undefined) {
@@ -243,21 +240,13 @@ module.exports = class southxchange extends Exchange {
         const quote = this.safeCurrencyCode (quoteId);
         const symbol = base + '/' + quote;
         const timestamp = undefined;
-        const price = this.safeFloat (order, 'LimitPrice');
-        const amount = this.safeFloat (order, 'OriginalAmount');
-        const remaining = this.safeFloat (order, 'Amount');
-        let filled = undefined;
-        let cost = undefined;
-        if (amount !== undefined) {
-            cost = price * amount;
-            if (remaining !== undefined) {
-                filled = amount - remaining;
-            }
-        }
+        const price = this.safeNumber (order, 'LimitPrice');
+        const amount = this.safeNumber (order, 'OriginalAmount');
+        const remaining = this.safeNumber (order, 'Amount');
         const type = 'limit';
         const side = this.safeStringLower (order, 'Type');
         const id = this.safeString (order, 'Code');
-        const result = {
+        return this.safeOrder ({
             'info': order,
             'id': id,
             'clientOrderId': undefined,
@@ -266,18 +255,20 @@ module.exports = class southxchange extends Exchange {
             'lastTradeTimestamp': undefined,
             'symbol': symbol,
             'type': type,
+            'timeInForce': undefined,
+            'postOnly': undefined,
             'side': side,
             'price': price,
+            'stopPrice': undefined,
             'amount': amount,
-            'cost': cost,
-            'filled': filled,
+            'cost': undefined,
+            'filled': undefined,
             'remaining': remaining,
             'status': status,
             'fee': undefined,
             'average': undefined,
             'trades': undefined,
-        };
-        return result;
+        });
     }
 
     async fetchOpenOrders (symbol = undefined, since = undefined, limit = undefined, params = {}) {
@@ -303,9 +294,10 @@ module.exports = class southxchange extends Exchange {
             request['limitPrice'] = price;
         }
         const response = await this.privatePostPlaceOrder (this.extend (request, params));
+        const id = JSON.parse (response);
         return {
             'info': response,
-            'id': response.toString (),
+            'id': id,
         };
     }
 
@@ -409,8 +401,8 @@ module.exports = class southxchange extends Exchange {
         const type = this.safeString (item, 'Type');
         const ledgerEntryType = this.parseLedgerEntryType (type);
         const code = this.safeCurrencyCode (this.safeString (item, 'CurrencyCode'), currency);
-        let amount = this.safeFloat (item, 'Amount');
-        const after = this.safeFloat (item, 'TotalBalance');
+        let amount = this.safeNumber (item, 'Amount');
+        const after = this.safeNumber (item, 'TotalBalance');
         let before = undefined;
         if (amount !== undefined) {
             if (after !== undefined) {
@@ -581,7 +573,7 @@ module.exports = class southxchange extends Exchange {
         //     }
         //
         const id = this.safeString (transaction, 'MovementId');
-        const amount = this.safeFloat (transaction, 'Amount');
+        const amount = this.safeNumber (transaction, 'Amount');
         const address = this.safeString (transaction, 'Address');
         const addressTo = address;
         const addressFrom = undefined;

@@ -3,7 +3,7 @@
 // ----------------------------------------------------------------------------
 
 const Exchange = require ('./base/Exchange');
-const { ExchangeError, ArgumentsRequired, AuthenticationError, RateLimitExceeded } = require ('./base/errors');
+const { ExchangeError, ArgumentsRequired, AuthenticationError, RateLimitExceeded, InvalidNonce } = require ('./base/errors');
 
 // ----------------------------------------------------------------------------
 
@@ -123,23 +123,31 @@ module.exports = class coinbase extends Exchange {
                 },
             },
             'exceptions': {
-                'two_factor_required': AuthenticationError, // 402 When sending money over 2fa limit
-                'param_required': ExchangeError, // 400 Missing parameter
-                'validation_error': ExchangeError, // 400 Unable to validate POST/PUT
-                'invalid_request': ExchangeError, // 400 Invalid request
-                'personal_details_required': AuthenticationError, // 400 User’s personal detail required to complete this request
-                'identity_verification_required': AuthenticationError, // 400 Identity verification is required to complete this request
-                'jumio_verification_required': AuthenticationError, // 400 Document verification is required to complete this request
-                'jumio_face_match_verification_required': AuthenticationError, // 400 Document verification including face match is required to complete this request
-                'unverified_email': AuthenticationError, // 400 User has not verified their email
-                'authentication_error': AuthenticationError, // 401 Invalid auth (generic)
-                'invalid_token': AuthenticationError, // 401 Invalid Oauth token
-                'revoked_token': AuthenticationError, // 401 Revoked Oauth token
-                'expired_token': AuthenticationError, // 401 Expired Oauth token
-                'invalid_scope': AuthenticationError, // 403 User hasn’t authenticated necessary scope
-                'not_found': ExchangeError, // 404 Resource not found
-                'rate_limit_exceeded': RateLimitExceeded, // 429 Rate limit exceeded
-                'internal_server_error': ExchangeError, // 500 Internal server error
+                'exact': {
+                    'two_factor_required': AuthenticationError, // 402 When sending money over 2fa limit
+                    'param_required': ExchangeError, // 400 Missing parameter
+                    'validation_error': ExchangeError, // 400 Unable to validate POST/PUT
+                    'invalid_request': ExchangeError, // 400 Invalid request
+                    'personal_details_required': AuthenticationError, // 400 User’s personal detail required to complete this request
+                    'identity_verification_required': AuthenticationError, // 400 Identity verification is required to complete this request
+                    'jumio_verification_required': AuthenticationError, // 400 Document verification is required to complete this request
+                    'jumio_face_match_verification_required': AuthenticationError, // 400 Document verification including face match is required to complete this request
+                    'unverified_email': AuthenticationError, // 400 User has not verified their email
+                    'authentication_error': AuthenticationError, // 401 Invalid auth (generic)
+                    'invalid_token': AuthenticationError, // 401 Invalid Oauth token
+                    'revoked_token': AuthenticationError, // 401 Revoked Oauth token
+                    'expired_token': AuthenticationError, // 401 Expired Oauth token
+                    'invalid_scope': AuthenticationError, // 403 User hasn’t authenticated necessary scope
+                    'not_found': ExchangeError, // 404 Resource not found
+                    'rate_limit_exceeded': RateLimitExceeded, // 429 Rate limit exceeded
+                    'internal_server_error': ExchangeError, // 500 Internal server error
+                },
+                'broad': {
+                    'request timestamp expired': InvalidNonce, // {"errors":[{"id":"authentication_error","message":"request timestamp expired"}]}
+                },
+            },
+            'commonCurrencies': {
+                'CGLD': 'CELO',
             },
             'options': {
                 'fetchCurrencies': {
@@ -169,7 +177,11 @@ module.exports = class coinbase extends Exchange {
     }
 
     async fetchAccounts (params = {}) {
-        const response = await this.privateGetAccounts (params);
+        await this.loadMarkets ();
+        const request = {
+            'limit': 100,
+        };
+        const response = await this.privateGetAccounts (this.extend (request, params));
         //
         //     {
         //         "id": "XLM",
@@ -399,10 +411,10 @@ module.exports = class coinbase extends Exchange {
         const timestamp = this.parse8601 (this.safeValue (transaction, 'created_at'));
         const updated = this.parse8601 (this.safeValue (transaction, 'updated_at'));
         const type = this.safeString (transaction, 'resource');
-        const amount = this.safeFloat (subtotalObject, 'amount');
+        const amount = this.safeNumber (subtotalObject, 'amount');
         const currencyId = this.safeString (subtotalObject, 'currency');
         const currency = this.safeCurrencyCode (currencyId);
-        const feeCost = this.safeFloat (feeObject, 'amount');
+        const feeCost = this.safeNumber (feeObject, 'amount');
         const feeCurrencyId = this.safeString (feeObject, 'currency');
         const feeCurrency = this.safeCurrencyCode (feeCurrencyId);
         const fee = {
@@ -478,15 +490,15 @@ module.exports = class coinbase extends Exchange {
         const orderId = undefined;
         const side = this.safeString (trade, 'resource');
         const type = undefined;
-        const cost = this.safeFloat (subtotalObject, 'amount');
-        const amount = this.safeFloat (amountObject, 'amount');
+        const cost = this.safeNumber (subtotalObject, 'amount');
+        const amount = this.safeNumber (amountObject, 'amount');
         let price = undefined;
         if (cost !== undefined) {
             if ((amount !== undefined) && (amount > 0)) {
                 price = cost / amount;
             }
         }
-        const feeCost = this.safeFloat (feeObject, 'amount');
+        const feeCost = this.safeNumber (feeObject, 'amount');
         const feeCurrencyId = this.safeString (feeObject, 'currency');
         const feeCurrency = this.safeCurrencyCode (feeCurrencyId);
         const fee = {
@@ -554,7 +566,7 @@ module.exports = class coinbase extends Exchange {
                                 'max': undefined,
                             },
                             'cost': {
-                                'min': this.safeFloat (quoteCurrency, 'min_size'),
+                                'min': this.safeNumber (quoteCurrency, 'min_size'),
                                 'max': undefined,
                             },
                         },
@@ -636,7 +648,7 @@ module.exports = class coinbase extends Exchange {
                 'precision': undefined,
                 'limits': {
                     'amount': {
-                        'min': this.safeFloat (currency, 'min_size'),
+                        'min': this.safeNumber (currency, 'min_size'),
                         'max': undefined,
                     },
                     'price': {
@@ -667,9 +679,9 @@ module.exports = class coinbase extends Exchange {
         const buy = await this.publicGetPricesSymbolBuy (request);
         const sell = await this.publicGetPricesSymbolSell (request);
         const spot = await this.publicGetPricesSymbolSpot (request);
-        const ask = this.safeFloat (buy['data'], 'amount');
-        const bid = this.safeFloat (sell['data'], 'amount');
-        const last = this.safeFloat (spot['data'], 'amount');
+        const ask = this.safeNumber (buy['data'], 'amount');
+        const bid = this.safeNumber (sell['data'], 'amount');
+        const last = this.safeNumber (spot['data'], 'amount');
         return {
             'symbol': symbol,
             'timestamp': timestamp,
@@ -700,7 +712,10 @@ module.exports = class coinbase extends Exchange {
 
     async fetchBalance (params = {}) {
         await this.loadMarkets ();
-        const response = await this.privateGetAccounts (params);
+        const request = {
+            'limit': 100,
+        };
+        const response = await this.privateGetAccounts (this.extend (request, params));
         const balances = this.safeValue (response, 'data');
         const accounts = this.safeValue (params, 'type', this.options['accounts']);
         const result = { 'info': response };
@@ -709,7 +724,7 @@ module.exports = class coinbase extends Exchange {
             if (this.inArray (balance['type'], accounts)) {
                 const currencyId = this.safeString (balance['balance'], 'currency');
                 const code = this.safeCurrencyCode (currencyId);
-                const total = this.safeFloat (balance['balance'], 'amount');
+                const total = this.safeNumber (balance['balance'], 'amount');
                 const free = total;
                 const used = undefined;
                 if (code in result) {
@@ -1010,7 +1025,7 @@ module.exports = class coinbase extends Exchange {
         //     }
         //
         const amountInfo = this.safeValue (item, 'amount', {});
-        let amount = this.safeFloat (amountInfo, 'amount');
+        let amount = this.safeNumber (amountInfo, 'amount');
         let direction = undefined;
         if (amount < 0) {
             direction = 'out';
@@ -1036,7 +1051,7 @@ module.exports = class coinbase extends Exchange {
         if (feeInfo !== undefined) {
             const feeCurrencyId = this.safeString (feeInfo, 'currency');
             const feeCurrencyCode = this.safeCurrencyCode (feeCurrencyId, currency);
-            const feeAmount = this.safeFloat (feeInfo, 'amount');
+            const feeAmount = this.safeNumber (feeInfo, 'amount');
             fee = {
                 'cost': feeAmount,
                 'currency': feeCurrencyCode,
@@ -1172,7 +1187,9 @@ module.exports = class coinbase extends Exchange {
         //
         let errorCode = this.safeString (response, 'error');
         if (errorCode !== undefined) {
-            this.throwExactlyMatchedException (this.exceptions, errorCode, feedback);
+            const errorMessage = this.safeString (response, 'error_description');
+            this.throwExactlyMatchedException (this.exceptions['exact'], errorCode, feedback);
+            this.throwBroadlyMatchedException (this.exceptions['broad'], errorMessage, feedback);
             throw new ExchangeError (feedback);
         }
         const errors = this.safeValue (response, 'errors');
@@ -1181,8 +1198,10 @@ module.exports = class coinbase extends Exchange {
                 const numErrors = errors.length;
                 if (numErrors > 0) {
                     errorCode = this.safeString (errors[0], 'id');
+                    const errorMessage = this.safeString (errors[0], 'message');
                     if (errorCode !== undefined) {
-                        this.throwExactlyMatchedException (this.exceptions, errorCode, feedback);
+                        this.throwExactlyMatchedException (this.exceptions['exact'], errorCode, feedback);
+                        this.throwBroadlyMatchedException (this.exceptions['broad'], errorMessage, feedback);
                         throw new ExchangeError (feedback);
                     }
                 }

@@ -162,6 +162,7 @@ class coinegg(Exchange):
             },
             'commonCurrencies': {
                 'JBC': 'JubaoCoin',
+                'SBTC': 'Super Bitcoin',
             },
         })
 
@@ -217,8 +218,8 @@ class coinegg(Exchange):
     def parse_ticker(self, ticker, market=None):
         symbol = market['symbol']
         timestamp = self.milliseconds()
-        last = self.safe_float(ticker, 'last')
-        percentage = self.safe_float(ticker, 'change')
+        last = self.safe_number(ticker, 'last')
+        percentage = self.safe_number(ticker, 'change')
         open = None
         change = None
         average = None
@@ -231,11 +232,11 @@ class coinegg(Exchange):
             'symbol': symbol,
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
-            'high': self.safe_float(ticker, 'high'),
-            'low': self.safe_float(ticker, 'low'),
-            'bid': self.safe_float(ticker, 'buy'),
+            'high': self.safe_number(ticker, 'high'),
+            'low': self.safe_number(ticker, 'low'),
+            'bid': self.safe_number(ticker, 'buy'),
             'bidVolume': None,
-            'ask': self.safe_float(ticker, 'sell'),
+            'ask': self.safe_number(ticker, 'sell'),
             'askVolume': None,
             'vwap': None,
             'open': open,
@@ -245,8 +246,8 @@ class coinegg(Exchange):
             'change': change,
             'percentage': percentage,
             'average': average,
-            'baseVolume': self.safe_float(ticker, 'vol'),
-            'quoteVolume': self.safe_float(ticker, 'quoteVol'),
+            'baseVolume': self.safe_number(ticker, 'vol'),
+            'quoteVolume': self.safe_number(ticker, 'quoteVol'),
             'info': ticker,
         }
 
@@ -272,8 +273,8 @@ class coinegg(Exchange):
 
     def parse_trade(self, trade, market=None):
         timestamp = self.safe_timestamp(trade, 'date')
-        price = self.safe_float(trade, 'price')
-        amount = self.safe_float(trade, 'amount')
+        price = self.safe_number(trade, 'price')
+        amount = self.safe_number(trade, 'amount')
         symbol = market['symbol']
         cost = None
         if amount is not None:
@@ -322,7 +323,7 @@ class coinegg(Exchange):
             if not (code in result):
                 result[code] = self.account()
             type = 'used' if (accountType == 'lock') else 'free'
-            result[code][type] = self.safe_float(balances, key)
+            result[code][type] = self.safe_number(balances, key)
         return self.parse_balance(result)
 
     def parse_order(self, order, market=None):
@@ -330,13 +331,9 @@ class coinegg(Exchange):
         if market is not None:
             symbol = market['symbol']
         timestamp = self.parse8601(self.safe_string(order, 'datetime'))
-        price = self.safe_float(order, 'price')
-        amount = self.safe_float(order, 'amount_original')
-        remaining = self.safe_float(order, 'amount_outstanding')
-        filled = None
-        if amount is not None:
-            if remaining is not None:
-                filled = amount - remaining
+        price = self.safe_number(order, 'price')
+        amount = self.safe_number(order, 'amount_original')
+        remaining = self.safe_number(order, 'amount_outstanding')
         status = self.safe_string(order, 'status')
         if status == 'cancelled':
             status = 'canceled'
@@ -346,7 +343,7 @@ class coinegg(Exchange):
         type = 'limit'
         side = self.safe_string(order, 'type')
         id = self.safe_string(order, 'id')
-        return {
+        return self.safe_order({
             'id': id,
             'clientOrderId': None,
             'datetime': self.iso8601(timestamp),
@@ -355,17 +352,20 @@ class coinegg(Exchange):
             'status': status,
             'symbol': symbol,
             'type': type,
+            'timeInForce': None,
+            'postOnly': None,
             'side': side,
             'price': price,
+            'stopPrice': None,
             'cost': None,
             'amount': amount,
-            'filled': filled,
+            'filled': None,
             'remaining': remaining,
             'trades': None,
             'fee': None,
             'info': info,
             'average': None,
-        }
+        })
 
     def create_order(self, symbol, type, side, amount, price=None, params={}):
         self.load_markets()

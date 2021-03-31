@@ -114,7 +114,7 @@ class lakebtc extends Exchange {
             $currencyId = $currencyIds[$i];
             $code = $this->safe_currency_code($currencyId);
             $account = $this->account();
-            $account['total'] = $this->safe_float($balances, $currencyId);
+            $account['total'] = $this->safe_number($balances, $currencyId);
             $result[$code] = $account;
         }
         return $this->parse_balance($result);
@@ -135,16 +135,16 @@ class lakebtc extends Exchange {
         if ($market !== null) {
             $symbol = $market['symbol'];
         }
-        $last = $this->safe_float($ticker, 'last');
+        $last = $this->safe_number($ticker, 'last');
         return array(
             'symbol' => $symbol,
             'timestamp' => $timestamp,
             'datetime' => $this->iso8601($timestamp),
-            'high' => $this->safe_float($ticker, 'high'),
-            'low' => $this->safe_float($ticker, 'low'),
-            'bid' => $this->safe_float($ticker, 'bid'),
+            'high' => $this->safe_number($ticker, 'high'),
+            'low' => $this->safe_number($ticker, 'low'),
+            'bid' => $this->safe_number($ticker, 'bid'),
             'bidVolume' => null,
-            'ask' => $this->safe_float($ticker, 'ask'),
+            'ask' => $this->safe_number($ticker, 'ask'),
             'askVolume' => null,
             'vwap' => null,
             'open' => null,
@@ -154,7 +154,7 @@ class lakebtc extends Exchange {
             'change' => null,
             'percentage' => null,
             'average' => null,
-            'baseVolume' => $this->safe_float($ticker, 'volume'),
+            'baseVolume' => $this->safe_number($ticker, 'volume'),
             'quoteVolume' => null,
             'info' => $ticker,
         );
@@ -166,16 +166,13 @@ class lakebtc extends Exchange {
         $ids = is_array($response) ? array_keys($response) : array();
         $result = array();
         for ($i = 0; $i < count($ids); $i++) {
-            $symbol = $ids[$i];
-            $ticker = $response[$symbol];
-            $market = null;
-            if (is_array($this->markets_by_id) && array_key_exists($symbol, $this->markets_by_id)) {
-                $market = $this->markets_by_id[$symbol];
-                $symbol = $market['symbol'];
-            }
+            $marketId = $ids[$i];
+            $ticker = $response[$marketId];
+            $market = $this->safe_market($marketId);
+            $symbol = $market['symbol'];
             $result[$symbol] = $this->parse_ticker($ticker, $market);
         }
-        return $result;
+        return $this->filter_by_array($result, 'symbol', $symbols);
     }
 
     public function fetch_ticker($symbol, $params = array ()) {
@@ -188,8 +185,8 @@ class lakebtc extends Exchange {
     public function parse_trade($trade, $market = null) {
         $timestamp = $this->safe_timestamp($trade, 'date');
         $id = $this->safe_string($trade, 'tid');
-        $price = $this->safe_float($trade, 'price');
-        $amount = $this->safe_float($trade, 'amount');
+        $price = $this->safe_number($trade, 'price');
+        $amount = $this->safe_number($trade, 'amount');
         $cost = null;
         if ($price !== null) {
             if ($amount !== null) {
@@ -303,7 +300,7 @@ class lakebtc extends Exchange {
             );
             $query = implode('&', $query);
             $signature = $this->hmac($this->encode($query), $this->encode($this->secret), 'sha1');
-            $auth = $this->encode($this->apiKey . ':' . $signature);
+            $auth = $this->apiKey . ':' . $signature;
             $signature64 = $this->decode(base64_encode($auth));
             $headers = array(
                 'Json-Rpc-Tonce' => $nonceAsString,

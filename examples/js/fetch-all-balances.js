@@ -67,7 +67,14 @@ const coins = [
     'USD',
     'USDC',
     'USDT',
+    'BUSD',
     'XRP',
+    'DOGE',
+    'YFI',
+    'LINK',
+    'XLM',
+    'ADA',
+    'SOL',
 ]
 
 function initializeAllExchanges () {

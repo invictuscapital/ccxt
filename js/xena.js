@@ -38,6 +38,10 @@ module.exports = class xena extends Exchange {
             },
             'urls': {
                 'logo': 'https://user-images.githubusercontent.com/51840849/87489843-bb469280-c64c-11ea-91aa-69c6326506af.jpg',
+                'test': {
+                    'public': 'https://trading.demo.xena.io/api',
+                    'private': 'https://api.demo.xena.io',
+                },
                 'api': {
                     'public': 'https://trading.xena.exchange/api',
                     'private': 'https://api.xena.exchange',
@@ -273,8 +277,8 @@ module.exports = class xena extends Exchange {
                 'price': pricePrecision,
                 'amount': 0,
             };
-            const maxCost = this.safeFloat (market, 'maxOrderQty');
-            const minCost = this.safeFloat (market, 'minOrderQuantity');
+            const maxCost = this.safeNumber (market, 'maxOrderQty');
+            const minCost = this.safeNumber (market, 'minOrderQuantity');
             const limits = {
                 'amount': {
                     'min': undefined,
@@ -359,7 +363,7 @@ module.exports = class xena extends Exchange {
                 'info': currency,
                 'name': name,
                 'active': active,
-                'fee': this.safeFloat (withdraw, 'commission'),
+                'fee': this.safeNumber (withdraw, 'commission'),
                 'precision': precision,
                 'limits': {
                     'amount': {
@@ -375,7 +379,7 @@ module.exports = class xena extends Exchange {
                         'max': undefined,
                     },
                     'withdraw': {
-                        'min': this.safeFloat (withdraw, 'minAmount'),
+                        'min': this.safeNumber (withdraw, 'minAmount'),
                         'max': undefined,
                     },
                 },
@@ -402,19 +406,9 @@ module.exports = class xena extends Exchange {
         //
         const timestamp = this.milliseconds ();
         const marketId = this.safeString (ticker, 'symbol');
-        let symbol = undefined;
-        if (marketId !== undefined) {
-            if (marketId in this.markets_by_id) {
-                market = this.markets_by_id[marketId];
-            } else {
-                symbol = marketId;
-            }
-        }
-        if ((symbol === undefined) && (market !== undefined)) {
-            symbol = market['symbol'];
-        }
-        const last = this.safeFloat (ticker, 'lastPx');
-        const open = this.safeFloat (ticker, 'firstPx');
+        const symbol = this.safeSymbol (marketId, market);
+        const last = this.safeNumber (ticker, 'lastPx');
+        const open = this.safeNumber (ticker, 'firstPx');
         let percentage = undefined;
         let change = undefined;
         let average = undefined;
@@ -425,18 +419,18 @@ module.exports = class xena extends Exchange {
                 percentage = change / open * 100;
             }
         }
-        const buyVolume = this.safeFloat (ticker, 'buyVolume');
-        const sellVolume = this.safeFloat (ticker, 'sellVolume');
+        const buyVolume = this.safeNumber (ticker, 'buyVolume');
+        const sellVolume = this.safeNumber (ticker, 'sellVolume');
         const baseVolume = this.sum (buyVolume, sellVolume);
         return {
             'symbol': symbol,
             'timestamp': timestamp,
             'datetime': this.iso8601 (timestamp),
-            'high': this.safeFloat (ticker, 'highPx'),
-            'low': this.safeFloat (ticker, 'lowPx'),
-            'bid': this.safeFloat (ticker, 'bid'),
+            'high': this.safeNumber (ticker, 'highPx'),
+            'low': this.safeNumber (ticker, 'lowPx'),
+            'bid': this.safeNumber (ticker, 'bid'),
             'bidVolume': undefined,
-            'ask': this.safeFloat (ticker, 'ask'),
+            'ask': this.safeNumber (ticker, 'ask'),
             'askVolume': undefined,
             'vwap': undefined,
             'open': open,
@@ -485,7 +479,7 @@ module.exports = class xena extends Exchange {
             const symbol = ticker['symbol'];
             result[symbol] = ticker;
         }
-        return result;
+        return this.filterByArray (result, 'symbol', symbols);
     }
 
     async fetchOrderBook (symbol, limit = undefined, params = {}) {
@@ -613,8 +607,8 @@ module.exports = class xena extends Exchange {
             const currencyId = this.safeString (balance, 'currency');
             const code = this.safeCurrencyCode (currencyId);
             const account = this.account ();
-            account['free'] = this.safeFloat (balance, 'available');
-            account['used'] = this.safeFloat (balance, 'onHold');
+            account['free'] = this.safeNumber (balance, 'available');
+            account['used'] = this.safeNumber (balance, 'onHold');
             result[code] = account;
         }
         return this.parseBalance (result);
@@ -669,24 +663,10 @@ module.exports = class xena extends Exchange {
             side = 'sell';
         }
         const orderId = this.safeString (trade, 'orderId');
-        let symbol = undefined;
         const marketId = this.safeString (trade, 'symbol');
-        if (marketId !== undefined) {
-            if (marketId in this.markets_by_id) {
-                market = this.markets_by_id[marketId];
-                symbol = market['id'];
-            } else {
-                const [ baseId, quoteId ] = marketId.split ('/');
-                const base = this.safeCurrencyCode (baseId);
-                const quote = this.safeCurrencyCode (quoteId);
-                symbol = base + '/' + quote;
-            }
-        }
-        if ((symbol === undefined) && (market !== undefined)) {
-            symbol = market['symbol'];
-        }
-        const price = this.safeFloat2 (trade, 'lastPx', 'mdEntryPx');
-        const amount = this.safeFloat2 (trade, 'lastQty', 'mdEntrySize');
+        const symbol = this.safeSymbol (marketId, market);
+        const price = this.safeNumber2 (trade, 'lastPx', 'mdEntryPx');
+        const amount = this.safeNumber2 (trade, 'lastQty', 'mdEntrySize');
         let cost = undefined;
         if (price !== undefined) {
             if (amount !== undefined) {
@@ -694,11 +674,11 @@ module.exports = class xena extends Exchange {
             }
         }
         let fee = undefined;
-        const feeCost = this.safeFloat (trade, 'commission');
+        const feeCost = this.safeNumber (trade, 'commission');
         if (feeCost !== undefined) {
             const feeCurrencyId = this.safeString (trade, 'commCurrency');
             const feeCurrencyCode = this.safeCurrencyCode (feeCurrencyId);
-            const feeRate = this.safeFloat (trade, 'commRate');
+            const feeRate = this.safeNumber (trade, 'commRate');
             fee = {
                 'cost': feeCost,
                 'rate': feeRate,
@@ -813,15 +793,15 @@ module.exports = class xena extends Exchange {
         //
         const transactTime = this.safeInteger (ohlcv, 'transactTime');
         const timestamp = parseInt (transactTime / 1000000);
-        const buyVolume = this.safeFloat (ohlcv, 'buyVolume');
-        const sellVolume = this.safeFloat (ohlcv, 'sellVolume');
+        const buyVolume = this.safeNumber (ohlcv, 'buyVolume');
+        const sellVolume = this.safeNumber (ohlcv, 'sellVolume');
         const volume = this.sum (buyVolume, sellVolume);
         return [
             timestamp,
-            this.safeFloat (ohlcv, 'firstPx'),
-            this.safeFloat (ohlcv, 'highPx'),
-            this.safeFloat (ohlcv, 'lowPx'),
-            this.safeFloat (ohlcv, 'lastPx'),
+            this.safeNumber (ohlcv, 'firstPx'),
+            this.safeNumber (ohlcv, 'highPx'),
+            this.safeNumber (ohlcv, 'lowPx'),
+            this.safeNumber (ohlcv, 'lastPx'),
             volume,
         ];
     }
@@ -944,23 +924,12 @@ module.exports = class xena extends Exchange {
         const transactTime = this.safeInteger (order, 'transactTime');
         const timestamp = parseInt (transactTime / 1000000);
         const status = this.parseOrderStatus (this.safeString (order, 'ordStatus'));
-        let symbol = undefined;
         const marketId = this.safeString (order, 'symbol');
-        if (marketId !== undefined) {
-            if (marketId in this.markets_by_id) {
-                market = this.markets_by_id[marketId];
-            } else {
-                symbol = marketId;
-            }
-        }
-        if ((symbol === undefined) && (market !== undefined)) {
-            symbol = market['symbol'];
-        }
-        const price = this.safeFloat (order, 'price');
-        const amount = this.safeFloat (order, 'orderQty');
-        const filled = this.safeFloat (order, 'cumQty');
-        const remaining = this.safeFloat (order, 'leavesQty');
-        let cost = undefined;
+        const symbol = this.safeSymbol (marketId, market);
+        const price = this.safeNumber (order, 'price');
+        const amount = this.safeNumber (order, 'orderQty');
+        const filled = this.safeNumber (order, 'cumQty');
+        const remaining = this.safeNumber (order, 'leavesQty');
         let side = this.safeStringLower (order, 'side');
         if (side === '1') {
             side = 'buy';
@@ -977,12 +946,7 @@ module.exports = class xena extends Exchange {
         } else if (type === '4') {
             type = 'stop-limit';
         }
-        if (cost === undefined) {
-            if ((price !== undefined) && (filled !== undefined)) {
-                cost = price * filled;
-            }
-        }
-        return {
+        return this.safeOrder ({
             'id': id,
             'clientOrderId': clientOrderId,
             'info': order,
@@ -991,17 +955,20 @@ module.exports = class xena extends Exchange {
             'lastTradeTimestamp': undefined,
             'symbol': symbol,
             'type': type,
+            'timeInForce': undefined,
+            'postOnly': undefined,
             'side': side,
             'price': price,
+            'stopPrice': undefined,
             'amount': amount,
-            'cost': cost,
+            'cost': undefined,
             'average': undefined,
             'filled': filled,
             'remaining': remaining,
             'status': status,
             'fee': undefined,
             'trades': undefined,
-        };
+        });
     }
 
     async createOrder (symbol, type, side, amount, price = undefined, params = {}) {
@@ -1049,14 +1016,14 @@ module.exports = class xena extends Exchange {
         };
         if ((type === 'limit') || (type === 'stop-limit')) {
             if (price === undefined) {
-                throw new InvalidOrder (this.id + ' createOrder requires a price argument for order type ' + type);
+                throw new InvalidOrder (this.id + ' createOrder() requires a price argument for order type ' + type);
             }
             request['price'] = this.priceToPrecision (symbol, price);
         }
         if ((type === 'stop') || (type === 'stop-limit')) {
-            const stopPx = this.safeFloat (params, 'stopPx');
+            const stopPx = this.safeNumber (params, 'stopPx');
             if (stopPx === undefined) {
-                throw new InvalidOrder (this.id + ' createOrder requires a stopPx param for order type ' + type);
+                throw new InvalidOrder (this.id + ' createOrder() requires a stopPx param for order type ' + type);
             }
             request['stopPx'] = this.priceToPrecision (symbol, stopPx);
             params = this.omit (params, 'stopPx');
@@ -1094,7 +1061,7 @@ module.exports = class xena extends Exchange {
 
     async editOrder (id, symbol, type, side, amount = undefined, price = undefined, params = {}) {
         if (symbol === undefined) {
-            throw new ArgumentsRequired (this.id + ' cancelOrder requires a symbol argument');
+            throw new ArgumentsRequired (this.id + ' cancelOrder() requires a symbol argument');
         }
         await this.loadMarkets ();
         await this.loadAccounts ();
@@ -1133,12 +1100,12 @@ module.exports = class xena extends Exchange {
         if (price !== undefined) {
             request['price'] = this.priceToPrecision (symbol, price);
         }
-        const stopPx = this.safeFloat (params, 'stopPx');
+        const stopPx = this.safeNumber (params, 'stopPx');
         if (stopPx !== undefined) {
             request['stopPx'] = this.priceToPrecision (symbol, stopPx);
             params = this.omit (params, 'stopPx');
         }
-        const capPrice = this.safeFloat (params, 'capPrice');
+        const capPrice = this.safeNumber (params, 'capPrice');
         if (capPrice !== undefined) {
             request['capPrice'] = this.priceToPrecision (symbol, capPrice);
             params = this.omit (params, 'capPrice');
@@ -1149,7 +1116,7 @@ module.exports = class xena extends Exchange {
 
     async cancelOrder (id, symbol = undefined, params = {}) {
         if (symbol === undefined) {
-            throw new ArgumentsRequired (this.id + ' cancelOrder requires a symbol argument');
+            throw new ArgumentsRequired (this.id + ' cancelOrder() requires a symbol argument');
         }
         await this.loadMarkets ();
         await this.loadAccounts ();
@@ -1493,7 +1460,7 @@ module.exports = class xena extends Exchange {
         const address = this.safeString (transaction, 'address');
         const addressFrom = undefined;
         const addressTo = address;
-        const amount = this.safeFloat (transaction, 'amount');
+        const amount = this.safeNumber (transaction, 'amount');
         const status = this.parseTransactionStatus (this.safeString (transaction, 'status'));
         const fee = undefined;
         return {
@@ -1590,7 +1557,7 @@ module.exports = class xena extends Exchange {
         const referenceAccount = undefined;
         const type = this.parseLedgerEntryType (this.safeString (item, 'kind'));
         const code = this.safeCurrencyCode (this.safeString (item, 'currency'), currency);
-        let amount = this.safeFloat (item, 'amount');
+        let amount = this.safeNumber (item, 'amount');
         if (amount < 0) {
             direction = 'out';
             amount = Math.abs (amount);
@@ -1602,11 +1569,11 @@ module.exports = class xena extends Exchange {
             timestamp = parseInt (timestamp / 1000000);
         }
         const fee = {
-            'cost': this.safeFloat (item, 'commission'),
+            'cost': this.safeNumber (item, 'commission'),
             'currency': code,
         };
         const before = undefined;
-        const after = this.safeFloat (item, 'balance');
+        const after = this.safeNumber (item, 'balance');
         const status = 'ok';
         return {
             'info': item,

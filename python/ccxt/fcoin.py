@@ -4,7 +4,6 @@
 # https://github.com/ccxt/ccxt/blob/master/CONTRIBUTING.md#how-to-contribute-code
 
 from ccxt.base.exchange import Exchange
-import base64
 import hashlib
 import math
 from ccxt.base.errors import ExchangeError
@@ -234,8 +233,8 @@ class fcoin(Exchange):
             }
             limits = {
                 'amount': {
-                    'min': self.safe_float(market, 'limit_amount_min'),
-                    'max': self.safe_float(market, 'limit_amount_max'),
+                    'min': self.safe_number(market, 'limit_amount_min'),
+                    'max': self.safe_number(market, 'limit_amount_max'),
                 },
                 'price': {
                     'min': math.pow(10, -precision['price']),
@@ -325,9 +324,9 @@ class fcoin(Exchange):
             currencyId = self.safe_string(balance, 'currency')
             code = self.safe_currency_code(currencyId)
             account = self.account()
-            account['free'] = self.safe_float(balance, 'available')
-            account['total'] = self.safe_float(balance, 'balance')
-            account['used'] = self.safe_float(balance, 'frozen')
+            account['free'] = self.safe_number(balance, 'available')
+            account['total'] = self.safe_number(balance, 'balance')
+            account['used'] = self.safe_number(balance, 'frozen')
             result[code] = account
         return self.parse_balance(result)
 
@@ -341,8 +340,8 @@ class fcoin(Exchange):
             priceField = self.sum(index, priceKey)
             amountField = self.sum(index, amountKey)
             result.append([
-                self.safe_float(orders, priceField),
-                self.safe_float(orders, amountField),
+                self.safe_number(orders, priceField),
+                self.safe_number(orders, amountField),
             ])
         return result
 
@@ -380,22 +379,19 @@ class fcoin(Exchange):
             if tickerType is not None:
                 parts = tickerType.split('.')
                 id = parts[1]
-                if id in self.markets_by_id:
-                    market = self.markets_by_id[id]
+                symbol = self.safe_symbol(id, market)
         values = ticker['ticker']
-        last = self.safe_float(values, 0)
-        if market is not None:
-            symbol = market['symbol']
+        last = self.safe_number(values, 0)
         return {
             'symbol': symbol,
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
-            'high': self.safe_float(values, 7),
-            'low': self.safe_float(values, 8),
-            'bid': self.safe_float(values, 2),
-            'bidVolume': self.safe_float(values, 3),
-            'ask': self.safe_float(values, 4),
-            'askVolume': self.safe_float(values, 5),
+            'high': self.safe_number(values, 7),
+            'low': self.safe_number(values, 8),
+            'bid': self.safe_number(values, 2),
+            'bidVolume': self.safe_number(values, 3),
+            'ask': self.safe_number(values, 4),
+            'askVolume': self.safe_number(values, 5),
             'vwap': None,
             'open': None,
             'close': last,
@@ -404,8 +400,8 @@ class fcoin(Exchange):
             'change': None,
             'percentage': None,
             'average': None,
-            'baseVolume': self.safe_float(values, 9),
-            'quoteVolume': self.safe_float(values, 10),
+            'baseVolume': self.safe_number(values, 9),
+            'quoteVolume': self.safe_number(values, 10),
             'info': ticker,
         }
 
@@ -416,8 +412,8 @@ class fcoin(Exchange):
         timestamp = self.safe_integer(trade, 'ts')
         side = self.safe_string_lower(trade, 'side')
         id = self.safe_string(trade, 'id')
-        price = self.safe_float(trade, 'price')
-        amount = self.safe_float(trade, 'amount')
+        price = self.safe_number(trade, 'price')
+        amount = self.safe_number(trade, 'amount')
         cost = None
         if price is not None:
             if amount is not None:
@@ -530,40 +526,27 @@ class fcoin(Exchange):
         id = self.safe_string(order, 'id')
         side = self.safe_string(order, 'side')
         status = self.parse_order_status(self.safe_string(order, 'state'))
-        symbol = None
-        if market is None:
-            marketId = self.safe_string(order, 'symbol')
-            if marketId in self.markets_by_id:
-                market = self.markets_by_id[marketId]
+        marketId = self.safe_string(order, 'symbol')
+        market = self.safe_market(marketId, market)
+        symbol = market['symbol']
         orderType = self.safe_string(order, 'type')
         timestamp = self.safe_integer(order, 'created_at')
-        amount = self.safe_float(order, 'amount')
-        filled = self.safe_float(order, 'filled_amount')
-        remaining = None
-        price = self.safe_float(order, 'price')
-        cost = self.safe_float(order, 'executed_value')
-        if filled is not None:
-            if amount is not None:
-                remaining = amount - filled
-            if cost is None:
-                if price is not None:
-                    cost = price * filled
-            elif (cost > 0) and (filled > 0):
-                price = cost / filled
+        amount = self.safe_number(order, 'amount')
+        filled = self.safe_number(order, 'filled_amount')
+        price = self.safe_number(order, 'price')
+        cost = self.safe_number(order, 'executed_value')
         feeCurrency = None
         feeCost = None
-        feeRebate = self.safe_float(order, 'fees_income')
+        feeRebate = self.safe_number(order, 'fees_income')
         if (feeRebate is not None) and (feeRebate > 0):
             if market is not None:
-                symbol = market['symbol']
                 feeCurrency = market['quote'] if (side == 'buy') else market['base']
             feeCost = -feeRebate
         else:
-            feeCost = self.safe_float(order, 'fill_fees')
+            feeCost = self.safe_number(order, 'fill_fees')
             if market is not None:
-                symbol = market['symbol']
                 feeCurrency = market['base'] if (side == 'buy') else market['quote']
-        return {
+        return self.safe_order({
             'info': order,
             'id': id,
             'clientOrderId': None,
@@ -572,11 +555,14 @@ class fcoin(Exchange):
             'lastTradeTimestamp': None,
             'symbol': symbol,
             'type': orderType,
+            'timeInForce': None,
+            'postOnly': None,
             'side': side,
             'price': price,
+            'stopPrice': None,
             'cost': cost,
             'amount': amount,
-            'remaining': remaining,
+            'remaining': None,
             'filled': filled,
             'average': None,
             'status': status,
@@ -585,7 +571,7 @@ class fcoin(Exchange):
                 'currency': feeCurrency,
             },
             'trades': None,
-        }
+        })
 
     def fetch_order(self, id, symbol=None, params={}):
         self.load_markets()
@@ -620,11 +606,11 @@ class fcoin(Exchange):
     def parse_ohlcv(self, ohlcv, market=None):
         return [
             self.safe_timestamp(ohlcv, 'id'),
-            self.safe_float(ohlcv, 'open'),
-            self.safe_float(ohlcv, 'high'),
-            self.safe_float(ohlcv, 'low'),
-            self.safe_float(ohlcv, 'close'),
-            self.safe_float(ohlcv, 'base_vol'),
+            self.safe_number(ohlcv, 'open'),
+            self.safe_number(ohlcv, 'high'),
+            self.safe_number(ohlcv, 'low'),
+            self.safe_number(ohlcv, 'close'),
+            self.safe_number(ohlcv, 'base_vol'),
         ]
 
     def fetch_ohlcv(self, symbol, timeframe='1m', since=None, limit=None, params={}):
@@ -674,9 +660,9 @@ class fcoin(Exchange):
                 if query:
                     body = self.json(query)
                     auth += self.urlencode(query)
-            payload = base64.b64encode(self.encode(auth))
+            payload = self.string_to_base64(auth)
             signature = self.hmac(payload, self.encode(self.secret), hashlib.sha1, 'binary')
-            signature = self.decode(base64.b64encode(signature))
+            signature = self.decode(self.string_to_base64(signature))
             headers = {
                 'FC-ACCESS-KEY': self.apiKey,
                 'FC-ACCESS-SIGNATURE': signature,

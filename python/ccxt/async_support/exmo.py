@@ -40,7 +40,6 @@ class exmo(Exchange):
                 'CORS': False,
                 'createOrder': True,
                 'fetchBalance': True,
-                'fetchClosedOrders': 'emulated',
                 'fetchCurrencies': True,
                 'fetchDepositAddress': True,
                 'fetchFundingFees': True,
@@ -51,7 +50,6 @@ class exmo(Exchange):
                 'fetchOrder': 'emulated',
                 'fetchOrderBook': True,
                 'fetchOrderBooks': True,
-                'fetchOrders': 'emulated',
                 'fetchOrderTrades': True,
                 'fetchTicker': True,
                 'fetchTickers': True,
@@ -100,11 +98,14 @@ class exmo(Exchange):
                 'public': {
                     'get': [
                         'currency',
+                        'currency/list/extended',
                         'order_book',
                         'pair_settings',
                         'ticker',
                         'trades',
                         'candles_history',
+                        'required_amount',
+                        'payments/providers/crypto/list',
                     ],
                 },
                 'private': {
@@ -118,13 +119,14 @@ class exmo(Exchange):
                         'user_trades',
                         'user_cancelled_orders',
                         'order_trades',
-                        'required_amount',
                         'deposit_address',
                         'withdraw_crypt',
                         'withdraw_get_txid',
                         'excode_create',
                         'excode_load',
+                        'code_check',
                         'wallet_history',
+                        'wallet_operations',
                     ],
                 },
             },
@@ -584,18 +586,18 @@ class exmo(Exchange):
             baseId, quoteId = marketId.split('/')
             base = self.safe_currency_code(baseId)
             quote = self.safe_currency_code(quoteId)
-            maxAmount = self.safe_float(limit, 'max_q')
-            maxPrice = self.safe_float(limit, 'max_p')
-            maxCost = self.safe_float(limit, 'max_a')
-            minAmount = self.safe_float(limit, 'min_q')
-            minPrice = self.safe_float(limit, 'min_p')
-            minCost = self.safe_float(limit, 'min_a')
-            minAmounts[base] = min(self.safe_float(minAmounts, base, minAmount), minAmount)
-            maxAmounts[base] = max(self.safe_float(maxAmounts, base, maxAmount), maxAmount)
-            minPrices[quote] = min(self.safe_float(minPrices, quote, minPrice), minPrice)
-            minCosts[quote] = min(self.safe_float(minCosts, quote, minCost), minCost)
-            maxPrices[quote] = max(self.safe_float(maxPrices, quote, maxPrice), maxPrice)
-            maxCosts[quote] = max(self.safe_float(maxCosts, quote, maxCost), maxCost)
+            maxAmount = self.safe_number(limit, 'max_q')
+            maxPrice = self.safe_number(limit, 'max_p')
+            maxCost = self.safe_number(limit, 'max_a')
+            minAmount = self.safe_number(limit, 'min_q')
+            minPrice = self.safe_number(limit, 'min_p')
+            minCost = self.safe_number(limit, 'min_a')
+            minAmounts[base] = min(self.safe_number(minAmounts, base, minAmount), minAmount)
+            maxAmounts[base] = max(self.safe_number(maxAmounts, base, maxAmount), maxAmount)
+            minPrices[quote] = min(self.safe_number(minPrices, quote, minPrice), minPrice)
+            minCosts[quote] = min(self.safe_number(minCosts, quote, minCost), minCost)
+            maxPrices[quote] = max(self.safe_number(maxPrices, quote, maxPrice), maxPrice)
+            maxCosts[quote] = max(self.safe_number(maxCosts, quote, maxCost), maxCost)
         result = {}
         for i in range(0, len(ids)):
             id = ids[i]
@@ -611,16 +613,16 @@ class exmo(Exchange):
                 'precision': 8,
                 'limits': {
                     'amount': {
-                        'min': self.safe_float(minAmounts, code),
-                        'max': self.safe_float(maxAmounts, code),
+                        'min': self.safe_number(minAmounts, code),
+                        'max': self.safe_number(maxAmounts, code),
                     },
                     'price': {
-                        'min': self.safe_float(minPrices, code),
-                        'max': self.safe_float(maxPrices, code),
+                        'min': self.safe_number(minPrices, code),
+                        'max': self.safe_number(maxPrices, code),
                     },
                     'cost': {
-                        'min': self.safe_float(minCosts, code),
-                        'max': self.safe_float(maxCosts, code),
+                        'min': self.safe_number(minCosts, code),
+                        'max': self.safe_number(maxCosts, code),
                     },
                 },
                 'info': id,
@@ -653,8 +655,8 @@ class exmo(Exchange):
             baseId, quoteId = symbol.split('/')
             base = self.safe_currency_code(baseId)
             quote = self.safe_currency_code(quoteId)
-            taker = self.safe_float(market, 'commission_taker_percent')
-            maker = self.safe_float(market, 'commission_maker_percent')
+            taker = self.safe_number(market, 'commission_taker_percent')
+            maker = self.safe_number(market, 'commission_maker_percent')
             result.append({
                 'id': id,
                 'symbol': symbol,
@@ -667,16 +669,16 @@ class exmo(Exchange):
                 'maker': maker / 100,
                 'limits': {
                     'amount': {
-                        'min': self.safe_float(market, 'min_quantity'),
-                        'max': self.safe_float(market, 'max_quantity'),
+                        'min': self.safe_number(market, 'min_quantity'),
+                        'max': self.safe_number(market, 'max_quantity'),
                     },
                     'price': {
-                        'min': self.safe_float(market, 'min_price'),
-                        'max': self.safe_float(market, 'max_price'),
+                        'min': self.safe_number(market, 'min_price'),
+                        'max': self.safe_number(market, 'max_price'),
                     },
                     'cost': {
-                        'min': self.safe_float(market, 'min_amount'),
-                        'max': self.safe_float(market, 'max_amount'),
+                        'min': self.safe_number(market, 'min_amount'),
+                        'max': self.safe_number(market, 'max_amount'),
                     },
                 },
                 'precision': {
@@ -700,7 +702,7 @@ class exmo(Exchange):
         now = self.milliseconds()
         if since is None:
             if limit is None:
-                raise ArgumentsRequired(self.id + ' fetchOHLCV requires a since argument or a limit argument')
+                raise ArgumentsRequired(self.id + ' fetchOHLCV() requires a since argument or a limit argument')
             else:
                 if limit > maxLimit:
                     raise BadRequest(self.id + ' fetchOHLCV will serve ' + str(maxLimit) + ' candles at most')
@@ -741,26 +743,28 @@ class exmo(Exchange):
         #
         return [
             self.safe_integer(ohlcv, 't'),
-            self.safe_float(ohlcv, 'o'),
-            self.safe_float(ohlcv, 'h'),
-            self.safe_float(ohlcv, 'l'),
-            self.safe_float(ohlcv, 'c'),
-            self.safe_float(ohlcv, 'v'),
+            self.safe_number(ohlcv, 'o'),
+            self.safe_number(ohlcv, 'h'),
+            self.safe_number(ohlcv, 'l'),
+            self.safe_number(ohlcv, 'c'),
+            self.safe_number(ohlcv, 'v'),
         ]
 
     async def fetch_balance(self, params={}):
         await self.load_markets()
         response = await self.privatePostUserInfo(params)
         result = {'info': response}
-        codes = list(self.currencies.keys())
+        free = self.safe_value(response, 'balances', {})
+        used = self.safe_value(response, 'reserved', {})
+        codes = list(free.keys())
         for i in range(0, len(codes)):
             code = codes[i]
             currencyId = self.currency_id(code)
             account = self.account()
-            if currencyId in response['balances']:
-                account['free'] = self.safe_float(response['balances'], currencyId)
-            if currencyId in response['reserved']:
-                account['used'] = self.safe_float(response['reserved'], currencyId)
+            if currencyId in free:
+                account['free'] = self.safe_number(free, currencyId)
+            if currencyId in used:
+                account['used'] = self.safe_number(used, currencyId)
             result[code] = account
         return self.parse_balance(result)
 
@@ -810,16 +814,16 @@ class exmo(Exchange):
         symbol = None
         if market is not None:
             symbol = market['symbol']
-        last = self.safe_float(ticker, 'last_trade')
+        last = self.safe_number(ticker, 'last_trade')
         return {
             'symbol': symbol,
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
-            'high': self.safe_float(ticker, 'high'),
-            'low': self.safe_float(ticker, 'low'),
-            'bid': self.safe_float(ticker, 'buy_price'),
+            'high': self.safe_number(ticker, 'high'),
+            'low': self.safe_number(ticker, 'low'),
+            'bid': self.safe_number(ticker, 'buy_price'),
             'bidVolume': None,
-            'ask': self.safe_float(ticker, 'sell_price'),
+            'ask': self.safe_number(ticker, 'sell_price'),
             'askVolume': None,
             'vwap': None,
             'open': None,
@@ -828,9 +832,9 @@ class exmo(Exchange):
             'previousClose': None,
             'change': None,
             'percentage': None,
-            'average': self.safe_float(ticker, 'avg'),
-            'baseVolume': self.safe_float(ticker, 'vol'),
-            'quoteVolume': self.safe_float(ticker, 'vol_curr'),
+            'average': self.safe_number(ticker, 'avg'),
+            'baseVolume': self.safe_number(ticker, 'vol'),
+            'quoteVolume': self.safe_number(ticker, 'vol_curr'),
             'info': ticker,
         }
 
@@ -845,7 +849,7 @@ class exmo(Exchange):
             symbol = market['symbol']
             ticker = response[id]
             result[symbol] = self.parse_ticker(ticker, market)
-        return result
+        return self.filter_by_array(result, 'symbol', symbols)
 
     async def fetch_ticker(self, symbol, params={}):
         await self.load_markets()
@@ -887,9 +891,9 @@ class exmo(Exchange):
         symbol = None
         id = self.safe_string(trade, 'trade_id')
         orderId = self.safe_string(trade, 'order_id')
-        price = self.safe_float(trade, 'price')
-        amount = self.safe_float(trade, 'quantity')
-        cost = self.safe_float(trade, 'amount')
+        price = self.safe_number(trade, 'price')
+        amount = self.safe_number(trade, 'quantity')
+        cost = self.safe_number(trade, 'amount')
         side = self.safe_string(trade, 'type')
         type = None
         marketId = self.safe_string(trade, 'pair')
@@ -905,11 +909,11 @@ class exmo(Exchange):
             symbol = market['symbol']
         takerOrMaker = self.safe_string(trade, 'exec_type')
         fee = None
-        feeCost = self.safe_float(trade, 'commission_amount')
+        feeCost = self.safe_number(trade, 'commission_amount')
         if feeCost is not None:
             feeCurrencyId = self.safe_string(trade, 'commission_currency')
             feeCurrencyCode = self.safe_currency_code(feeCurrencyId)
-            feeRate = self.safe_float(trade, 'commission_percent')
+            feeRate = self.safe_number(trade, 'commission_percent')
             if feeRate is not None:
                 feeRate /= 1000
             fee = {
@@ -1025,7 +1029,7 @@ class exmo(Exchange):
         amount = float(amount)
         price = float(price)
         status = 'open'
-        order = {
+        return {
             'id': id,
             'info': response,
             'timestamp': timestamp,
@@ -1045,54 +1049,43 @@ class exmo(Exchange):
             'clientOrderId': None,
             'average': None,
         }
-        self.orders[id] = order
-        return order
 
     async def cancel_order(self, id, symbol=None, params={}):
         await self.load_markets()
         request = {'order_id': id}
-        response = await self.privatePostOrderCancel(self.extend(request, params))
-        if id in self.orders:
-            self.orders[id]['status'] = 'canceled'
-        return response
+        return await self.privatePostOrderCancel(self.extend(request, params))
 
     async def fetch_order(self, id, symbol=None, params={}):
         await self.load_markets()
-        try:
-            request = {
-                'order_id': str(id),
-            }
-            response = await self.privatePostOrderTrades(self.extend(request, params))
-            #
-            #     {
-            #         "type": "buy",
-            #         "in_currency": "BTC",
-            #         "in_amount": "1",
-            #         "out_currency": "USD",
-            #         "out_amount": "100",
-            #         "trades": [
-            #             {
-            #                 "trade_id": 3,
-            #                 "date": 1435488248,
-            #                 "type": "buy",
-            #                 "pair": "BTC_USD",
-            #                 "order_id": 12345,
-            #                 "quantity": 1,
-            #                 "price": 100,
-            #                 "amount": 100
-            #             }
-            #         ]
-            #     }
-            #
-            order = self.parse_order(response)
-            return self.extend(order, {
-                'id': str(id),
-            })
-        except Exception as e:
-            if isinstance(e, OrderNotFound):
-                if id in self.orders:
-                    return self.orders[id]
-        raise OrderNotFound(self.id + ' fetchOrder order id ' + str(id) + ' not found in cache.')
+        request = {
+            'order_id': str(id),
+        }
+        response = await self.privatePostOrderTrades(self.extend(request, params))
+        #
+        #     {
+        #         "type": "buy",
+        #         "in_currency": "BTC",
+        #         "in_amount": "1",
+        #         "out_currency": "USD",
+        #         "out_amount": "100",
+        #         "trades": [
+        #             {
+        #                 "trade_id": 3,
+        #                 "date": 1435488248,
+        #                 "type": "buy",
+        #                 "pair": "BTC_USD",
+        #                 "order_id": 12345,
+        #                 "quantity": 1,
+        #                 "price": 100,
+        #                 "amount": 100
+        #             }
+        #         ]
+        #     }
+        #
+        order = self.parse_order(response)
+        return self.extend(order, {
+            'id': str(id),
+        })
 
     async def fetch_order_trades(self, id, symbol=None, since=None, limit=None, params={}):
         market = None
@@ -1130,40 +1123,7 @@ class exmo(Exchange):
         trades = self.safe_value(response, 'trades')
         return self.parse_trades(trades, market, since, limit)
 
-    def update_cached_orders(self, openOrders, symbol):
-        # update local cache with open orders
-        for j in range(0, len(openOrders)):
-            id = openOrders[j]['id']
-            self.orders[id] = openOrders[j]
-        openOrdersIndexedById = self.index_by(openOrders, 'id')
-        cachedOrderIds = list(self.orders.keys())
-        for k in range(0, len(cachedOrderIds)):
-            # match each cached order to an order in the open orders array
-            # possible reasons why a cached order may be missing in the open orders array:
-            # - order was closed or canceled -> update cache
-            # - symbol mismatch(e.g. cached BTC/USDT, fetched ETH/USDT) -> skip
-            id = cachedOrderIds[k]
-            order = self.orders[id]
-            if not (id in openOrdersIndexedById):
-                # cached order is not in open orders array
-                # if we fetched orders by symbol and it doesn't match the cached order -> won't update the cached order
-                if symbol is not None and symbol != order['symbol']:
-                    continue
-                # order is cached but not present in the list of open orders -> mark the cached order as closed
-                if order['status'] == 'open':
-                    order = self.extend(order, {
-                        'status': 'closed',  # likewise it might have been canceled externally(unnoticed by "us")
-                        'cost': None,
-                        'filled': order['amount'],
-                        'remaining': 0.0,
-                    })
-                    if order['cost'] is None:
-                        if order['filled'] is not None:
-                            order['cost'] = order['filled'] * order['price']
-                    self.orders[id] = order
-        return self.to_array(self.orders)
-
-    async def fetch_orders(self, symbol=None, since=None, limit=None, params={}):
+    async def fetch_open_orders(self, symbol=None, since=None, limit=None, params={}):
         await self.load_markets()
         response = await self.privatePostUserOpenOrders(params)
         marketIds = list(response.keys())
@@ -1175,17 +1135,6 @@ class exmo(Exchange):
                 market = self.markets_by_id[marketId]
             parsedOrders = self.parse_orders(response[marketId], market)
             orders = self.array_concat(orders, parsedOrders)
-        self.update_cached_orders(orders, symbol)
-        return self.filter_by_symbol_since_limit(self.to_array(self.orders), symbol, since, limit)
-
-    async def fetch_open_orders(self, symbol=None, since=None, limit=None, params={}):
-        await self.fetch_orders(symbol, since, limit, params)
-        orders = self.filter_by(self.orders, 'status', 'open')
-        return self.filter_by_symbol_since_limit(orders, symbol, since, limit)
-
-    async def fetch_closed_orders(self, symbol=None, since=None, limit=None, params={}):
-        await self.fetch_orders(symbol, since, limit, params)
-        orders = self.filter_by(self.orders, 'status', 'closed')
         return self.filter_by_symbol_since_limit(orders, symbol, since, limit)
 
     def parse_order(self, order, market=None):
@@ -1239,12 +1188,12 @@ class exmo(Exchange):
                     marketId = order['out_currency'] + '_' + order['in_currency']
             if (marketId is not None) and (marketId in self.markets_by_id):
                 market = self.markets_by_id[marketId]
-        amount = self.safe_float(order, 'quantity')
+        amount = self.safe_number(order, 'quantity')
         if amount is None:
             amountField = 'in_amount' if (side == 'buy') else 'out_amount'
-            amount = self.safe_float(order, amountField)
-        price = self.safe_float(order, 'price')
-        cost = self.safe_float(order, 'amount')
+            amount = self.safe_number(order, amountField)
+        price = self.safe_number(order, 'price')
+        cost = self.safe_number(order, 'amount')
         filled = 0.0
         trades = []
         transactions = self.safe_value(order, 'trades', [])
@@ -1302,8 +1251,11 @@ class exmo(Exchange):
             'status': status,
             'symbol': symbol,
             'type': 'limit',
+            'timeInForce': None,
+            'postOnly': None,
             'side': side,
             'price': price,
+            'stopPrice': None,
             'cost': cost,
             'amount': amount,
             'filled': filled,
@@ -1399,7 +1351,7 @@ class exmo(Exchange):
         #          }
         #
         timestamp = self.safe_timestamp(transaction, 'dt')
-        amount = self.safe_float(transaction, 'amount')
+        amount = self.safe_number(transaction, 'amount')
         if amount is not None:
             amount = abs(amount)
         status = self.parse_transaction_status(self.safe_string(transaction, 'status'))
@@ -1407,17 +1359,25 @@ class exmo(Exchange):
         type = self.safe_string(transaction, 'type')
         currencyId = self.safe_string(transaction, 'curr')
         code = self.safe_currency_code(currencyId, currency)
-        address = self.safe_string(transaction, 'account')
-        if address is not None:
-            parts = address.split(':')
-            numParts = len(parts)
-            if numParts == 2:
-                address = parts[1].replace(' ', '')
+        address = None
+        tag = None
+        comment = None
+        account = self.safe_string(transaction, 'account')
+        if type == 'deposit':
+            comment = account
+        elif type == 'withdrawal':
+            address = account
+            if address is not None:
+                parts = address.split(':')
+                numParts = len(parts)
+                if numParts == 2:
+                    address = self.safe_string(parts, 1)
+                    address = address.replace(' ', '')
         fee = None
         # fixed funding fees only(for now)
         if not self.fees['funding']['percentage']:
             key = 'withdraw' if (type == 'withdrawal') else 'deposit'
-            feeCost = self.safe_float(self.options['fundingFees'][key], code)
+            feeCost = self.safe_number(self.options['fundingFees'][key], code)
             # users don't pay for cashbacks, no fees for that
             provider = self.safe_string(transaction, 'provider')
             if provider == 'cashback':
@@ -1434,16 +1394,21 @@ class exmo(Exchange):
         return {
             'info': transaction,
             'id': None,
+            'timestamp': timestamp,
+            'datetime': self.iso8601(timestamp),
             'currency': code,
             'amount': amount,
             'address': address,
-            'tag': None,  # refix it properly
+            'addressTo': address,
+            'addressFrom': None,
+            'tag': tag,
+            'tagTo': tag,
+            'tagFrom': None,
             'status': status,
             'type': type,
             'updated': None,
+            'comment': comment,
             'txid': txid,
-            'timestamp': timestamp,
-            'datetime': self.iso8601(timestamp),
             'fee': fee,
         }
 

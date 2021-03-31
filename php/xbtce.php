@@ -157,9 +157,9 @@ class xbtce extends Exchange {
             $currencyId = $this->safe_string($balance, 'Currency');
             $code = $this->safe_currency_code($currencyId);
             $account = array(
-                'free' => $this->safe_float($balance, 'FreeAmount'),
-                'used' => $this->safe_float($balance, 'LockedAmount'),
-                'total' => $this->safe_float($balance, 'Amount'),
+                'free' => $this->safe_number($balance, 'FreeAmount'),
+                'used' => $this->safe_number($balance, 'LockedAmount'),
+                'total' => $this->safe_number($balance, 'Amount'),
             );
             $result[$code] = $account;
         }
@@ -247,7 +247,7 @@ class xbtce extends Exchange {
             $ticker = $tickers[$id];
             $result[$symbol] = $this->parse_ticker($ticker, $market);
         }
-        return $result;
+        return $this->filter_by_array($result, 'symbol', $symbols);
     }
 
     public function fetch_ticker($symbol, $params = array ()) {
@@ -275,16 +275,16 @@ class xbtce extends Exchange {
     public function parse_ohlcv($ohlcv, $market = null) {
         return array(
             $this->safe_integer($ohlcv, 'Timestamp'),
-            $this->safe_float($ohlcv, 'Open'),
-            $this->safe_float($ohlcv, 'High'),
-            $this->safe_float($ohlcv, 'Low'),
-            $this->safe_float($ohlcv, 'Close'),
-            $this->safe_float($ohlcv, 'Volume'),
+            $this->safe_number($ohlcv, 'Open'),
+            $this->safe_number($ohlcv, 'High'),
+            $this->safe_number($ohlcv, 'Low'),
+            $this->safe_number($ohlcv, 'Close'),
+            $this->safe_number($ohlcv, 'Volume'),
         );
     }
 
     public function fetch_ohlcv($symbol, $timeframe = '1m', $since = null, $limit = null, $params = array ()) {
-        //     $minutes = intval ($timeframe / 60); // 1 minute by default
+        //     $minutes = intval($timeframe / 60); // 1 minute by default
         //     $periodicity = (string) $minutes;
         //     $this->load_markets();
         //     $market = $this->market($symbol);
@@ -366,7 +366,7 @@ class xbtce extends Exchange {
                 $auth .= $body;
             }
             $signature = $this->hmac($this->encode($auth), $this->encode($this->secret), 'sha256', 'base64');
-            $credentials = $this->uid . ':' . $this->apiKey . ':' . $nonce . ':' . $this->decode($signature);
+            $credentials = $this->uid . ':' . $this->apiKey . ':' . $nonce . ':' . $signature;
             $headers['Authorization'] = 'HMAC ' . $credentials;
         }
         return array( 'url' => $url, 'method' => $method, 'body' => $body, 'headers' => $headers );

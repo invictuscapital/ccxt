@@ -185,7 +185,13 @@ class stex extends Exchange {
                 ),
             ),
             'commonCurrencies' => array(
+                'BC' => 'Bitcoin Confidential',
+                'BITS' => 'Bitcoinus',
+                'BITSW' => 'BITS',
                 'BHD' => 'Bithold',
+                'BTH' => 'Bithereum',
+                'MPH' => 'Chasyr Token',
+                'SBTC' => 'SBTCT', // SiamBitcoin
             ),
             'options' => array(
                 'parseOrderToPrecision' => false,
@@ -248,7 +254,7 @@ class stex extends Exchange {
             // differentiated fees for each particular method
             $code = $this->safe_currency_code($this->safe_string($currency, 'code'));
             $precision = $this->safe_integer($currency, 'precision');
-            $fee = $this->safe_float($currency, 'withdrawal_fee_const'); // todo => redesign
+            $fee = $this->safe_number($currency, 'withdrawal_fee_const'); // todo => redesign
             $active = $this->safe_value($currency, 'active', true);
             $result[$code] = array(
                 'id' => $id,
@@ -265,11 +271,11 @@ class stex extends Exchange {
                     'price' => array( 'min' => pow(10, -$precision), 'max' => null ),
                     'cost' => array( 'min' => null, 'max' => null ),
                     'deposit' => array(
-                        'min' => $this->safe_float($currency, 'minimum_deposit_amount'),
+                        'min' => $this->safe_number($currency, 'minimum_deposit_amount'),
                         'max' => null,
                     ),
                     'withdraw' => array(
-                        'min' => $this->safe_float($currency, 'minimum_withdrawal_amount'),
+                        'min' => $this->safe_number($currency, 'minimum_withdrawal_amount'),
                         'max' => null,
                     ),
                 ),
@@ -330,11 +336,11 @@ class stex extends Exchange {
                 'price' => $this->safe_integer($market, 'market_precision'),
             );
             $active = $this->safe_value($market, 'active');
-            $minBuyPrice = $this->safe_float($market, 'min_buy_price');
-            $minSellPrice = $this->safe_float($market, 'min_sell_price');
+            $minBuyPrice = $this->safe_number($market, 'min_buy_price');
+            $minSellPrice = $this->safe_number($market, 'min_sell_price');
             $minPrice = max ($minBuyPrice, $minSellPrice);
-            $buyFee = $this->safe_float($market, 'buy_fee_percent') / 100;
-            $sellFee = $this->safe_float($market, 'sell_fee_percent') / 100;
+            $buyFee = $this->safe_number($market, 'buy_fee_percent') / 100;
+            $sellFee = $this->safe_number($market, 'sell_fee_percent') / 100;
             $fee = max ($buyFee, $sellFee);
             $result[] = array(
                 'id' => $id,
@@ -353,7 +359,7 @@ class stex extends Exchange {
                 'precision' => $precision,
                 'limits' => array(
                     'amount' => array(
-                        'min' => $this->safe_float($market, 'min_order_amount'),
+                        'min' => $this->safe_number($market, 'min_order_amount'),
                         'max' => null,
                     ),
                     'price' => array( 'min' => $minPrice, 'max' => null ),
@@ -515,24 +521,10 @@ class stex extends Exchange {
         //     }
         //
         $timestamp = $this->safe_integer($ticker, 'timestamp');
-        $symbol = null;
-        $marketId = $this->safe_string($ticker, 'id');
-        if (is_array($this->markets_by_id) && array_key_exists($marketId, $this->markets_by_id)) {
-            $market = $this->markets_by_id[$marketId];
-        } else {
-            $marketId = $this->safe_string($ticker, 'symbol');
-            if ($marketId !== null) {
-                list($baseId, $quoteId) = explode('_', $marketId);
-                $base = $this->safe_currency_code($baseId);
-                $quote = $this->safe_currency_code($quoteId);
-                $symbol = $base . '/' . $quote;
-            }
-        }
-        if (($symbol === null) && ($market !== null)) {
-            $symbol = $market['symbol'];
-        }
-        $last = $this->safe_float($ticker, 'last');
-        $open = $this->safe_float($ticker, 'open');
+        $marketId = $this->safe_string_2($ticker, 'id', 'symbol');
+        $symbol = $this->safe_symbol($marketId, $market, '_');
+        $last = $this->safe_number($ticker, 'last');
+        $open = $this->safe_number($ticker, 'open');
         $change = null;
         $percentage = null;
         if ($last !== null) {
@@ -545,11 +537,11 @@ class stex extends Exchange {
             'symbol' => $symbol,
             'timestamp' => $timestamp,
             'datetime' => $this->iso8601($timestamp),
-            'high' => $this->safe_float($ticker, 'high'),
-            'low' => $this->safe_float($ticker, 'low'),
-            'bid' => $this->safe_float($ticker, 'bid'),
+            'high' => $this->safe_number($ticker, 'high'),
+            'low' => $this->safe_number($ticker, 'low'),
+            'bid' => $this->safe_number($ticker, 'bid'),
             'bidVolume' => null,
-            'ask' => $this->safe_float($ticker, 'ask'),
+            'ask' => $this->safe_number($ticker, 'ask'),
             'askVolume' => null,
             'vwap' => null,
             'open' => $open,
@@ -559,18 +551,10 @@ class stex extends Exchange {
             'change' => $change,
             'percentage' => $percentage,
             'average' => null,
-            'baseVolume' => $this->safe_float($ticker, 'volumeQuote'),
-            'quoteVolume' => $this->safe_float($ticker, 'volume'),
+            'baseVolume' => $this->safe_number($ticker, 'volumeQuote'),
+            'quoteVolume' => $this->safe_number($ticker, 'volume'),
             'info' => $ticker,
         );
-    }
-
-    public function parse_tickers($tickers, $symbols = null) {
-        $result = array();
-        for ($i = 0; $i < count($tickers); $i++) {
-            $result[] = $this->parse_ticker($tickers[$i]);
-        }
-        return $this->filter_by_array($result, 'symbol', $symbols);
     }
 
     public function fetch_tickers($symbols = null, $params = array ()) {
@@ -638,11 +622,11 @@ class stex extends Exchange {
         //
         return array(
             $this->safe_integer($ohlcv, 'time'),
-            $this->safe_float($ohlcv, 'open'),
-            $this->safe_float($ohlcv, 'high'),
-            $this->safe_float($ohlcv, 'low'),
-            $this->safe_float($ohlcv, 'close'),
-            $this->safe_float($ohlcv, 'volume'),
+            $this->safe_number($ohlcv, 'open'),
+            $this->safe_number($ohlcv, 'high'),
+            $this->safe_number($ohlcv, 'low'),
+            $this->safe_number($ohlcv, 'close'),
+            $this->safe_number($ohlcv, 'volume'),
         );
     }
 
@@ -668,7 +652,7 @@ class stex extends Exchange {
             $request['timeEnd'] = $this->seconds();
             $request['timeStart'] = $request['timeEnd'] - $timerange;
         } else {
-            $request['timeStart'] = intval ($since / 1000);
+            $request['timeStart'] = intval($since / 1000);
             $request['timeEnd'] = $this->sum($request['timeStart'], $timerange);
         }
         $response = $this->publicGetChartCurrencyPairIdCandlesType (array_merge($request, $params));
@@ -717,8 +701,8 @@ class stex extends Exchange {
         //
         $id = $this->safe_string($trade, 'id');
         $timestamp = $this->safe_timestamp($trade, 'timestamp');
-        $price = $this->safe_float($trade, 'price');
-        $amount = $this->safe_float($trade, 'amount');
+        $price = $this->safe_number($trade, 'price');
+        $amount = $this->safe_number($trade, 'amount');
         $cost = null;
         if (($price !== null) && ($amount !== null)) {
             $cost = $price * $amount;
@@ -761,7 +745,7 @@ class stex extends Exchange {
         }
         if ($since !== null) {
             $request['sort'] = 'ASC'; // needed to make the from param work
-            $request['from'] = intval ($since / 1000);
+            $request['from'] = intval($since / 1000);
         }
         $response = $this->publicGetTradesCurrencyPairId (array_merge($request, $params));
         //
@@ -835,8 +819,8 @@ class stex extends Exchange {
             $balance = $balances[$i];
             $code = $this->safe_currency_code($this->safe_string($balance, 'currency_id'));
             $account = $this->account();
-            $account['free'] = $this->safe_float($balance, 'balance');
-            $account['used'] = $this->safe_float($balance, 'frozen_balance');
+            $account['free'] = $this->safe_number($balance, 'balance');
+            $account['used'] = $this->safe_number($balance, 'frozen_balance');
             $result[$code] = $account;
         }
         return $this->parse_balance($result);
@@ -895,33 +879,19 @@ class stex extends Exchange {
         //
         $id = $this->safe_string($order, 'id');
         $status = $this->parse_order_status($this->safe_string($order, 'status'));
-        $symbol = null;
-        $marketId = $this->safe_string($order, 'currency_pair_id');
-        if (is_array($this->markets_by_id) && array_key_exists($marketId, $this->markets_by_id)) {
-            $market = $this->markets_by_id[$marketId];
-        } else {
-            $marketId = $this->safe_string($order, 'currency_pair_name');
-            if ($marketId !== null) {
-                list($baseId, $quoteId) = explode('_', $marketId);
-                $base = $this->safe_currency_code($baseId);
-                $quote = $this->safe_currency_code($quoteId);
-                $symbol = $base . '/' . $quote;
-            }
-        }
-        if (($symbol === null) && ($market !== null)) {
-            $symbol = $market['symbol'];
-        }
+        $marketId = $this->safe_string_2($order, 'currency_pair_id', 'currency_pair_name');
+        $symbol = $this->safe_symbol($marketId, $market, '_');
         $timestamp = $this->safe_timestamp($order, 'timestamp');
-        $price = $this->safe_float($order, 'price');
-        $amount = $this->safe_float($order, 'initial_amount');
-        $filled = $this->safe_float($order, 'processed_amount');
+        $price = $this->safe_number($order, 'price');
+        $amount = $this->safe_number($order, 'initial_amount');
+        $filled = $this->safe_number($order, 'processed_amount');
         $remaining = null;
         $cost = null;
         if ($filled !== null) {
             if ($amount !== null) {
                 $remaining = $amount - $filled;
                 if ($this->options['parseOrderToPrecision']) {
-                    $remaining = floatval ($this->amount_to_precision($symbol, $remaining));
+                    $remaining = floatval($this->amount_to_precision($symbol, $remaining));
                 }
                 $remaining = max ($remaining, 0.0);
             }
@@ -944,6 +914,7 @@ class stex extends Exchange {
                 'order' => $id,
             ));
         }
+        $stopPrice = $this->safe_number($order, 'trigger_price');
         $result = array(
             'info' => $order,
             'id' => $id,
@@ -953,8 +924,11 @@ class stex extends Exchange {
             'lastTradeTimestamp' => null,
             'symbol' => $symbol,
             'type' => $type,
+            'timeInForce' => null,
+            'postOnly' => null,
             'side' => $side,
             'price' => $price,
+            'stopPrice' => $stopPrice,
             'amount' => $amount,
             'cost' => $cost,
             'average' => null,
@@ -971,7 +945,7 @@ class stex extends Exchange {
             if ($numFees > 0) {
                 $result['fees'] = array();
                 for ($i = 0; $i < count($fees); $i++) {
-                    $feeCost = $this->safe_float($fees[$i], 'amount');
+                    $feeCost = $this->safe_number($fees[$i], 'amount');
                     if ($feeCost !== null) {
                         $feeCurrencyId = $this->safe_string($fees[$i], 'currency_id');
                         $feeCurrencyCode = $this->safe_currency_code($feeCurrencyId);
@@ -1000,8 +974,8 @@ class stex extends Exchange {
         $request = array(
             'currencyPairId' => $market['id'],
             'type' => strtoupper($type), // 'BUY', 'SELL', 'STOP_LIMIT_BUY', 'STOP_LIMIT_SELL'
-            'amount' => floatval ($this->amount_to_precision($symbol, $amount)), // required
-            'price' => floatval ($this->price_to_precision($symbol, $price)), // required
+            'amount' => floatval($this->amount_to_precision($symbol, $amount)), // required
+            'price' => floatval($this->price_to_precision($symbol, $price)), // required
             // 'trigger_price' => 123.45 // required for STOP_LIMIT_BUY or STOP_LIMIT_SELL
         );
         $response = $this->tradingPostOrdersCurrencyPairId (array_merge($request, $params));
@@ -1248,7 +1222,7 @@ class stex extends Exchange {
 
     public function fetch_my_trades($symbol = null, $since = null, $limit = null, $params = array ()) {
         if ($symbol === null) {
-            throw new ArgumentsRequired($this->id . ' fetchMyTrades requires a $symbol argument');
+            throw new ArgumentsRequired($this->id . ' fetchMyTrades() requires a $symbol argument');
         }
         $this->load_markets();
         $market = $this->market($symbol);
@@ -1555,13 +1529,13 @@ class stex extends Exchange {
             $code = $currency['code'];
         }
         $type = (is_array($transaction) && array_key_exists('deposit_status_id', $transaction)) ? 'deposit' : 'withdrawal';
-        $amount = $this->safe_float($transaction, 'amount');
+        $amount = $this->safe_number($transaction, 'amount');
         $status = $this->parse_transaction_status($this->safe_string_lower($transaction, 'status'));
         $timestamp = $this->safe_timestamp_2($transaction, 'timestamp', 'created_ts');
         $updated = $this->safe_timestamp($transaction, 'updated_ts');
         $txid = $this->safe_string($transaction, 'txid');
         $fee = null;
-        $feeCost = $this->safe_float($transaction, 'fee');
+        $feeCost = $this->safe_number($transaction, 'fee');
         if ($feeCost !== null) {
             $feeCurrencyId = $this->safe_string($transaction, 'fee_currency_id', 'deposit_fee_currency_id');
             $feeCurrencyCode = $this->safe_currency_code($feeCurrencyId);
@@ -1704,7 +1678,7 @@ class stex extends Exchange {
         $currency = $this->currency($code);
         $request = array(
             'currency_id' => $currency['id'],
-            'amount' => floatval ($this->currency_to_precision($code, $amount)),
+            'amount' => floatval($this->currency_to_precision($code, $amount)),
             'address' => $address,
             // 'protocol_id' => 10, // optional, to be used with multicurrency wallets like USDT
             // 'additional_address_parameter' => $tag, // optional
@@ -1797,8 +1771,8 @@ class stex extends Exchange {
         for ($i = 0; $i < count($data); $i++) {
             $id = $this->safe_string($data[$i], 'id');
             $code = $this->safe_currency_code($id);
-            $withdrawFees[$code] = $this->safe_float($data[$i], 'withdrawal_fee_const');
-            $depositFees[$code] = $this->safe_float($data[$i], 'deposit_fee_const');
+            $withdrawFees[$code] = $this->safe_number($data[$i], 'withdrawal_fee_const');
+            $depositFees[$code] = $this->safe_number($data[$i], 'deposit_fee_const');
         }
         return array(
             'withdraw' => $withdrawFees,

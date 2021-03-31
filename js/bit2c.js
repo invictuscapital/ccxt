@@ -86,7 +86,7 @@ module.exports = class bit2c extends Exchange {
                 },
             },
             'options': {
-                'fetchTradesMethod': 'public_get_exchanges_pair_lasttrades',
+                'fetchTradesMethod': 'public_get_exchanges_pair_trades',
             },
             'exceptions': {
                 'exact': {
@@ -155,8 +155,8 @@ module.exports = class bit2c extends Exchange {
             const currencyId = this.currencyId (code);
             const uppercase = currencyId.toUpperCase ();
             if (uppercase in balance) {
-                account['free'] = this.safeFloat (balance, 'AVAILABLE_' + uppercase);
-                account['total'] = this.safeFloat (balance, uppercase);
+                account['free'] = this.safeNumber (balance, 'AVAILABLE_' + uppercase);
+                account['total'] = this.safeNumber (balance, uppercase);
             }
             result[code] = account;
         }
@@ -179,22 +179,22 @@ module.exports = class bit2c extends Exchange {
         };
         const ticker = await this.publicGetExchangesPairTicker (this.extend (request, params));
         const timestamp = this.milliseconds ();
-        const averagePrice = this.safeFloat (ticker, 'av');
-        const baseVolume = this.safeFloat (ticker, 'a');
+        const averagePrice = this.safeNumber (ticker, 'av');
+        const baseVolume = this.safeNumber (ticker, 'a');
         let quoteVolume = undefined;
         if (baseVolume !== undefined && averagePrice !== undefined) {
             quoteVolume = baseVolume * averagePrice;
         }
-        const last = this.safeFloat (ticker, 'll');
+        const last = this.safeNumber (ticker, 'll');
         return {
             'symbol': symbol,
             'timestamp': timestamp,
             'datetime': this.iso8601 (timestamp),
             'high': undefined,
             'low': undefined,
-            'bid': this.safeFloat (ticker, 'h'),
+            'bid': this.safeNumber (ticker, 'h'),
             'bidVolume': undefined,
-            'ask': this.safeFloat (ticker, 'l'),
+            'ask': this.safeNumber (ticker, 'l'),
             'askVolume': undefined,
             'vwap': undefined,
             'open': undefined,
@@ -217,6 +217,12 @@ module.exports = class bit2c extends Exchange {
         const request = {
             'pair': market['id'],
         };
+        if (since !== undefined) {
+            request['date'] = parseInt (since);
+        }
+        if (limit !== undefined) {
+            request['limit'] = limit; // max 100000
+        }
         const response = await this[method] (this.extend (request, params));
         if (typeof response === 'string') {
             throw new ExchangeError (response);
@@ -270,14 +276,8 @@ module.exports = class bit2c extends Exchange {
 
     parseOrder (order, market = undefined) {
         const timestamp = this.safeInteger (order, 'created');
-        const price = this.safeFloat (order, 'price');
-        const amount = this.safeFloat (order, 'amount');
-        let cost = undefined;
-        if (price !== undefined) {
-            if (amount !== undefined) {
-                cost = price * amount;
-            }
-        }
+        const price = this.safeNumber (order, 'price');
+        const amount = this.safeNumber (order, 'amount');
         let symbol = undefined;
         if (market !== undefined) {
             symbol = market['symbol'];
@@ -290,7 +290,7 @@ module.exports = class bit2c extends Exchange {
         }
         const id = this.safeString (order, 'id');
         const status = this.safeString (order, 'status');
-        return {
+        return this.safeOrder ({
             'id': id,
             'clientOrderId': undefined,
             'timestamp': timestamp,
@@ -299,17 +299,20 @@ module.exports = class bit2c extends Exchange {
             'status': status,
             'symbol': symbol,
             'type': undefined,
+            'timeInForce': undefined,
+            'postOnly': undefined,
             'side': side,
             'price': price,
+            'stopPrice': undefined,
             'amount': amount,
             'filled': undefined,
             'remaining': undefined,
-            'cost': cost,
+            'cost': undefined,
             'trades': undefined,
             'fee': undefined,
             'info': order,
             'average': undefined,
-        };
+        });
     }
 
     async fetchMyTrades (symbol = undefined, since = undefined, limit = undefined, params = {}) {
@@ -343,8 +346,8 @@ module.exports = class bit2c extends Exchange {
         const reference = this.safeString (trade, 'reference');
         if (reference !== undefined) {
             timestamp = this.safeTimestamp (trade, 'ticks');
-            price = this.safeFloat (trade, 'price');
-            amount = this.safeFloat (trade, 'firstAmount');
+            price = this.safeNumber (trade, 'price');
+            amount = this.safeNumber (trade, 'firstAmount');
             const reference_parts = reference.split ('|'); // reference contains 'pair|orderId|tradeId'
             if (market === undefined) {
                 const marketId = this.safeString (trade, 'pair');
@@ -362,12 +365,12 @@ module.exports = class bit2c extends Exchange {
             } else if (side === 1) {
                 side = 'sell';
             }
-            feeCost = this.safeFloat (trade, 'feeAmount');
+            feeCost = this.safeNumber (trade, 'feeAmount');
         } else {
             timestamp = this.safeTimestamp (trade, 'date');
             id = this.safeString (trade, 'tid');
-            price = this.safeFloat (trade, 'price');
-            amount = this.safeFloat (trade, 'amount');
+            price = this.safeNumber (trade, 'price');
+            amount = this.safeNumber (trade, 'amount');
             side = this.safeValue (trade, 'isBid');
             if (side !== undefined) {
                 if (side) {
@@ -424,7 +427,7 @@ module.exports = class bit2c extends Exchange {
             headers = {
                 'Content-Type': 'application/x-www-form-urlencoded',
                 'key': this.apiKey,
-                'sign': this.decode (signature),
+                'sign': signature,
             };
         }
         return { 'url': url, 'method': method, 'body': body, 'headers': headers };

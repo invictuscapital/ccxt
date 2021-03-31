@@ -168,7 +168,7 @@ class indodax(Exchange):
             base = self.safe_currency_code(baseId)
             quote = self.safe_currency_code(quoteId)
             symbol = base + '/' + quote
-            taker = self.safe_float(market, 'trade_fee_percent')
+            taker = self.safe_number(market, 'trade_fee_percent')
             isMaintenance = self.safe_integer(market, 'is_maintenance')
             active = False if (isMaintenance) else True
             pricePrecision = self.safe_integer(market, 'price_round')
@@ -178,11 +178,11 @@ class indodax(Exchange):
             }
             limits = {
                 'amount': {
-                    'min': self.safe_float(market, 'trade_min_traded_currency'),
+                    'min': self.safe_number(market, 'trade_min_traded_currency'),
                     'max': None,
                 },
                 'price': {
-                    'min': self.safe_float(market, 'trade_min_base_currency'),
+                    'min': self.safe_number(market, 'trade_min_base_currency'),
                     'max': None,
                 },
                 'cost': {
@@ -218,8 +218,8 @@ class indodax(Exchange):
             currencyId = currencyIds[i]
             code = self.safe_currency_code(currencyId)
             account = self.account()
-            account['free'] = self.safe_float(free, currencyId)
-            account['used'] = self.safe_float(used, currencyId)
+            account['free'] = self.safe_number(free, currencyId)
+            account['used'] = self.safe_number(used, currencyId)
             result[code] = account
         return self.parse_balance(result)
 
@@ -256,16 +256,16 @@ class indodax(Exchange):
         timestamp = self.safe_timestamp(ticker, 'server_time')
         baseVolume = 'vol_' + market['baseId'].lower()
         quoteVolume = 'vol_' + market['quoteId'].lower()
-        last = self.safe_float(ticker, 'last')
+        last = self.safe_number(ticker, 'last')
         return {
             'symbol': symbol,
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
-            'high': self.safe_float(ticker, 'high'),
-            'low': self.safe_float(ticker, 'low'),
-            'bid': self.safe_float(ticker, 'buy'),
+            'high': self.safe_number(ticker, 'high'),
+            'low': self.safe_number(ticker, 'low'),
+            'bid': self.safe_number(ticker, 'buy'),
             'bidVolume': None,
-            'ask': self.safe_float(ticker, 'sell'),
+            'ask': self.safe_number(ticker, 'sell'),
             'askVolume': None,
             'vwap': None,
             'open': None,
@@ -275,8 +275,8 @@ class indodax(Exchange):
             'change': None,
             'percentage': None,
             'average': None,
-            'baseVolume': self.safe_float(ticker, baseVolume),
-            'quoteVolume': self.safe_float(ticker, quoteVolume),
+            'baseVolume': self.safe_number(ticker, baseVolume),
+            'quoteVolume': self.safe_number(ticker, quoteVolume),
             'info': ticker,
         }
 
@@ -288,8 +288,8 @@ class indodax(Exchange):
             symbol = market['symbol']
         type = None
         side = self.safe_string(trade, 'type')
-        price = self.safe_float(trade, 'price')
-        amount = self.safe_float(trade, 'amount')
+        price = self.safe_number(trade, 'price')
+        amount = self.safe_number(trade, 'amount')
         cost = None
         if price is not None:
             if amount is not None:
@@ -319,6 +319,14 @@ class indodax(Exchange):
         response = await self.publicGetPairTrades(self.extend(request, params))
         return self.parse_trades(response, market, since, limit)
 
+    def parse_order_status(self, status):
+        statuses = {
+            'open': 'open',
+            'filled': 'closed',
+            'cancelled': 'canceled',
+        }
+        return self.safe_string(statuses, status, status)
+
     def parse_order(self, order, market=None):
         #
         #     {
@@ -333,14 +341,10 @@ class indodax(Exchange):
         side = None
         if 'type' in order:
             side = order['type']
-        status = self.safe_string(order, 'status', 'open')
-        if status == 'filled':
-            status = 'closed'
-        elif status == 'cancelled':
-            status = 'canceled'
+        status = self.parse_order_status(self.safe_string(order, 'status', 'open'))
         symbol = None
         cost = None
-        price = self.safe_float(order, 'price')
+        price = self.safe_number(order, 'price')
         amount = None
         remaining = None
         filled = None
@@ -352,17 +356,17 @@ class indodax(Exchange):
                 quoteId = 'rp'
             if (market['baseId'] == 'idr') and ('remain_rp' in order):
                 baseId = 'rp'
-            cost = self.safe_float(order, 'order_' + quoteId)
+            cost = self.safe_number(order, 'order_' + quoteId)
             if cost:
                 amount = cost / price
-                remainingCost = self.safe_float(order, 'remain_' + quoteId)
+                remainingCost = self.safe_number(order, 'remain_' + quoteId)
                 if remainingCost is not None:
                     remaining = remainingCost / price
                     filled = amount - remaining
             else:
-                amount = self.safe_float(order, 'order_' + baseId)
+                amount = self.safe_number(order, 'order_' + baseId)
                 cost = price * amount
-                remaining = self.safe_float(order, 'remain_' + baseId)
+                remaining = self.safe_number(order, 'remain_' + baseId)
                 filled = amount - remaining
         average = None
         if filled:
@@ -379,8 +383,11 @@ class indodax(Exchange):
             'lastTradeTimestamp': None,
             'symbol': symbol,
             'type': 'limit',
+            'timeInForce': None,
+            'postOnly': None,
             'side': side,
             'price': price,
+            'stopPrice': None,
             'cost': cost,
             'average': average,
             'amount': amount,
@@ -393,7 +400,7 @@ class indodax(Exchange):
 
     async def fetch_order(self, id, symbol=None, params={}):
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' fetchOrder requires a symbol')
+            raise ArgumentsRequired(self.id + ' fetchOrder() requires a symbol')
         await self.load_markets()
         market = self.market(symbol)
         request = {
@@ -433,7 +440,7 @@ class indodax(Exchange):
 
     async def fetch_closed_orders(self, symbol=None, since=None, limit=None, params={}):
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' fetchOrders requires a symbol argument')
+            raise ArgumentsRequired(self.id + ' fetchOrders() requires a symbol argument')
         await self.load_markets()
         request = {}
         market = None
@@ -441,11 +448,9 @@ class indodax(Exchange):
             market = self.market(symbol)
             request['pair'] = market['id']
         response = await self.privatePostOrderHistory(self.extend(request, params))
-        orders = self.parse_orders(response['return']['orders'], market, since, limit)
+        orders = self.parse_orders(response['return']['orders'], market)
         orders = self.filter_by(orders, 'status', 'closed')
-        if symbol is not None:
-            return self.filter_by_symbol(orders, symbol)
-        return orders
+        return self.filter_by_symbol_since_limit(orders, symbol, since, limit)
 
     async def create_order(self, symbol, type, side, amount, price=None, params={}):
         if type != 'limit':
@@ -464,17 +469,19 @@ class indodax(Exchange):
             request[market['baseId']] = amount
         request[currency] = amount
         result = await self.privatePostTrade(self.extend(request, params))
+        data = self.safe_value(result, 'return', {})
+        id = self.safe_string(data, 'order_id')
         return {
             'info': result,
-            'id': str(result['return']['order_id']),
+            'id': id,
         }
 
     async def cancel_order(self, id, symbol=None, params={}):
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' cancelOrder requires a symbol argument')
+            raise ArgumentsRequired(self.id + ' cancelOrder() requires a symbol argument')
         side = self.safe_value(params, 'side')
         if side is None:
-            raise ArgumentsRequired(self.id + ' cancelOrder requires an extra "side" param')
+            raise ArgumentsRequired(self.id + ' cancelOrder() requires an extra "side" param')
         await self.load_markets()
         market = self.market(symbol)
         request = {

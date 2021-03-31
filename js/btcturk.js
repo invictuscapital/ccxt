@@ -125,9 +125,9 @@ module.exports = class btcturk extends Exchange {
             const used = currency['id'] + '_reserved';
             if (free in response) {
                 const account = this.account ();
-                account['free'] = this.safeFloat (response, free);
-                account['total'] = this.safeFloat (response, total);
-                account['used'] = this.safeFloat (response, used);
+                account['free'] = this.safeNumber (response, free);
+                account['total'] = this.safeNumber (response, total);
+                account['used'] = this.safeNumber (response, used);
                 result[code] = account;
             }
         }
@@ -151,26 +151,26 @@ module.exports = class btcturk extends Exchange {
             symbol = market['symbol'];
         }
         const timestamp = this.safeTimestamp (ticker, 'timestamp');
-        const last = this.safeFloat (ticker, 'last');
+        const last = this.safeNumber (ticker, 'last');
         return {
             'symbol': symbol,
             'timestamp': timestamp,
             'datetime': this.iso8601 (timestamp),
-            'high': this.safeFloat (ticker, 'high'),
-            'low': this.safeFloat (ticker, 'low'),
-            'bid': this.safeFloat (ticker, 'bid'),
+            'high': this.safeNumber (ticker, 'high'),
+            'low': this.safeNumber (ticker, 'low'),
+            'bid': this.safeNumber (ticker, 'bid'),
             'bidVolume': undefined,
-            'ask': this.safeFloat (ticker, 'ask'),
+            'ask': this.safeNumber (ticker, 'ask'),
             'askVolume': undefined,
             'vwap': undefined,
-            'open': this.safeFloat (ticker, 'open'),
+            'open': this.safeNumber (ticker, 'open'),
             'close': last,
             'last': last,
             'previousClose': undefined,
             'change': undefined,
             'percentage': undefined,
-            'average': this.safeFloat (ticker, 'average'),
-            'baseVolume': this.safeFloat (ticker, 'volume'),
+            'average': this.safeNumber (ticker, 'average'),
+            'baseVolume': this.safeNumber (ticker, 'volume'),
             'quoteVolume': undefined,
             'info': ticker,
         };
@@ -191,7 +191,7 @@ module.exports = class btcturk extends Exchange {
             }
             result[symbol] = this.parseTicker (ticker, market);
         }
-        return result;
+        return this.filterByArray (result, 'symbol', symbols);
     }
 
     async fetchTicker (symbol, params = {}) {
@@ -204,8 +204,8 @@ module.exports = class btcturk extends Exchange {
     parseTrade (trade, market = undefined) {
         const timestamp = this.safeTimestamp (trade, 'date');
         const id = this.safeString (trade, 'tid');
-        const price = this.safeFloat (trade, 'price');
-        const amount = this.safeFloat (trade, 'amount');
+        const price = this.safeNumber (trade, 'price');
+        const amount = this.safeNumber (trade, 'amount');
         let cost = undefined;
         if (amount !== undefined) {
             if (price !== undefined) {
@@ -247,11 +247,11 @@ module.exports = class btcturk extends Exchange {
     parseOHLCV (ohlcv, market = undefined) {
         return [
             this.parse8601 (this.safeString (ohlcv, 'Time')),
-            this.safeFloat (ohlcv, 'Open'),
-            this.safeFloat (ohlcv, 'High'),
-            this.safeFloat (ohlcv, 'Low'),
-            this.safeFloat (ohlcv, 'Close'),
-            this.safeFloat (ohlcv, 'Volume'),
+            this.safeNumber (ohlcv, 'Open'),
+            this.safeNumber (ohlcv, 'High'),
+            this.safeNumber (ohlcv, 'Low'),
+            this.safeNumber (ohlcv, 'Close'),
+            this.safeNumber (ohlcv, 'Volume'),
         ];
     }
 
@@ -275,7 +275,7 @@ module.exports = class btcturk extends Exchange {
         };
         if (type === 'market') {
             if (!('Total' in params)) {
-                throw new ExchangeError (this.id + ' createOrder requires the "Total" extra parameter for market orders (amount and price are both ignored)');
+                throw new ExchangeError (this.id + ' createOrder() requires the "Total" extra parameter for market orders (amount and price are both ignored)');
             }
         } else {
             request['Price'] = price;
@@ -318,7 +318,7 @@ module.exports = class btcturk extends Exchange {
             headers = {
                 'X-PCK': this.apiKey,
                 'X-Stamp': nonce,
-                'X-Signature': this.stringToBase64 (this.hmac (this.encode (auth), secret, 'sha256', 'binary')),
+                'X-Signature': this.hmac (this.encode (auth), secret, 'sha256', 'base64'),
                 'Content-Type': 'application/x-www-form-urlencoded',
             };
         }

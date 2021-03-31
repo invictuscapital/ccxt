@@ -78,16 +78,23 @@ module.exports = class bitbank extends Exchange {
                 },
             },
             'markets': {
+                'BAT/JPY': { 'id': 'bat_jpy', 'symbol': 'BAT/JPY', 'base': 'BAT', 'quote': 'JPY', 'baseId': 'bat', 'quoteId': 'jpy' },
+                'BAT/BTC': { 'id': 'bat_btc', 'symbol': 'BAT/BTC', 'base': 'BAT', 'quote': 'BTC', 'baseId': 'bat', 'quoteId': 'btc' },
                 'BCH/BTC': { 'id': 'bcc_btc', 'symbol': 'BCH/BTC', 'base': 'BCH', 'quote': 'BTC', 'baseId': 'bcc', 'quoteId': 'btc' },
                 'BCH/JPY': { 'id': 'bcc_jpy', 'symbol': 'BCH/JPY', 'base': 'BCH', 'quote': 'JPY', 'baseId': 'bcc', 'quoteId': 'jpy' },
+                'BTC/JPY': { 'id': 'btc_jpy', 'symbol': 'BTC/JPY', 'base': 'BTC', 'quote': 'JPY', 'baseId': 'btc', 'quoteId': 'jpy' },
+                'ETH/BTC': { 'id': 'eth_btc', 'symbol': 'ETH/BTC', 'base': 'ETH', 'quote': 'BTC', 'baseId': 'eth', 'quoteId': 'btc' },
+                'ETH/JPY': { 'id': 'eth_jpy', 'symbol': 'ETH/JPY', 'base': 'ETH', 'quote': 'JPY', 'baseId': 'eth', 'quoteId': 'jpy' },
+                'LTC/BTC': { 'id': 'ltc_btc', 'symbol': 'LTC/BTC', 'base': 'LTC', 'quote': 'BTC', 'baseId': 'ltc', 'quoteId': 'btc' },
+                'LTC/JPY': { 'id': 'ltc_jpy', 'symbol': 'LTC/JPY', 'base': 'LTC', 'quote': 'JPY', 'baseId': 'ltc', 'quoteId': 'jpy' },
                 'MONA/BTC': { 'id': 'mona_btc', 'symbol': 'MONA/BTC', 'base': 'MONA', 'quote': 'BTC', 'baseId': 'mona', 'quoteId': 'btc' },
                 'MONA/JPY': { 'id': 'mona_jpy', 'symbol': 'MONA/JPY', 'base': 'MONA', 'quote': 'JPY', 'baseId': 'mona', 'quoteId': 'jpy' },
-                'ETH/BTC': { 'id': 'eth_btc', 'symbol': 'ETH/BTC', 'base': 'ETH', 'quote': 'BTC', 'baseId': 'eth', 'quoteId': 'btc' },
-                'LTC/BTC': { 'id': 'ltc_btc', 'symbol': 'LTC/BTC', 'base': 'LTC', 'quote': 'BTC', 'baseId': 'ltc', 'quoteId': 'btc' },
+                'QTUM/BTC': { 'id': 'qtum_btc', 'symbol': 'QTUM/BTC', 'base': 'QTUM', 'quote': 'BTC', 'baseId': 'qtum', 'quoteId': 'btc' },
+                'QTUM/JPY': { 'id': 'qtum_jpy', 'symbol': 'QTUM/JPY', 'base': 'QTUM', 'quote': 'JPY', 'baseId': 'qtum', 'quoteId': 'jpy' },
+                'XLM/BTC': { 'id': 'xlm_btc', 'symbol': 'XLM/BTC', 'base': 'XLM', 'quote': 'BTC', 'baseId': 'xlm', 'quoteId': 'btc' },
+                'XLM/JPY': { 'id': 'xlm_jpy', 'symbol': 'XLM/JPY', 'base': 'XLM', 'quote': 'JPY', 'baseId': 'xlm', 'quoteId': 'jpy' },
+                'XRP/BTC': { 'id': 'xrp_btc', 'symbol': 'XRP/BTC', 'base': 'XRP', 'quote': 'BTC', 'baseId': 'xrp', 'quoteId': 'btc' },
                 'XRP/JPY': { 'id': 'xrp_jpy', 'symbol': 'XRP/JPY', 'base': 'XRP', 'quote': 'JPY', 'baseId': 'xrp', 'quoteId': 'jpy' },
-                'BTC/JPY': { 'id': 'btc_jpy', 'symbol': 'BTC/JPY', 'base': 'BTC', 'quote': 'JPY', 'baseId': 'btc', 'quoteId': 'jpy' },
-                'ETH/JPY': { 'id': 'eth_jpy', 'symbol': 'ETH/JPY', 'base': 'ETH', 'quote': 'JPY', 'baseId': 'eth', 'quoteId': 'jpy' },
-                'LTC/JPY': { 'id': 'ltc_jpy', 'symbol': 'LTC/JPY', 'base': 'LTC', 'quote': 'JPY', 'baseId': 'ltc', 'quoteId': 'jpy' },
             },
             'fees': {
                 'trading': {
@@ -136,16 +143,16 @@ module.exports = class bitbank extends Exchange {
             symbol = market['symbol'];
         }
         const timestamp = this.safeInteger (ticker, 'timestamp');
-        const last = this.safeFloat (ticker, 'last');
+        const last = this.safeNumber (ticker, 'last');
         return {
             'symbol': symbol,
             'timestamp': timestamp,
             'datetime': this.iso8601 (timestamp),
-            'high': this.safeFloat (ticker, 'high'),
-            'low': this.safeFloat (ticker, 'low'),
-            'bid': this.safeFloat (ticker, 'buy'),
+            'high': this.safeNumber (ticker, 'high'),
+            'low': this.safeNumber (ticker, 'low'),
+            'bid': this.safeNumber (ticker, 'buy'),
             'bidVolume': undefined,
-            'ask': this.safeFloat (ticker, 'sell'),
+            'ask': this.safeNumber (ticker, 'sell'),
             'askVolume': undefined,
             'vwap': undefined,
             'open': undefined,
@@ -155,7 +162,7 @@ module.exports = class bitbank extends Exchange {
             'change': undefined,
             'percentage': undefined,
             'average': undefined,
-            'baseVolume': this.safeFloat (ticker, 'vol'),
+            'baseVolume': this.safeNumber (ticker, 'vol'),
             'quoteVolume': undefined,
             'info': ticker,
         };
@@ -191,8 +198,8 @@ module.exports = class bitbank extends Exchange {
             symbol = market['symbol'];
             feeCurrency = market['quote'];
         }
-        const price = this.safeFloat (trade, 'price');
-        const amount = this.safeFloat (trade, 'amount');
+        const price = this.safeNumber (trade, 'price');
+        const amount = this.safeNumber (trade, 'amount');
         let cost = undefined;
         if (price !== undefined) {
             if (amount !== undefined) {
@@ -202,11 +209,11 @@ module.exports = class bitbank extends Exchange {
         const id = this.safeString2 (trade, 'transaction_id', 'trade_id');
         const takerOrMaker = this.safeString (trade, 'maker_taker');
         let fee = undefined;
-        const feeCost = this.safeFloat (trade, 'fee_amount_quote');
+        const feeCost = this.safeNumber (trade, 'fee_amount_quote');
         if (feeCost !== undefined) {
             fee = {
-                'currency': market['quote'],
-                'cost': feeCurrency,
+                'currency': feeCurrency,
+                'cost': feeCost,
             };
         }
         const orderId = this.safeString (trade, 'order_id');
@@ -254,11 +261,11 @@ module.exports = class bitbank extends Exchange {
         //
         return [
             this.safeInteger (ohlcv, 5),
-            this.safeFloat (ohlcv, 0),
-            this.safeFloat (ohlcv, 1),
-            this.safeFloat (ohlcv, 2),
-            this.safeFloat (ohlcv, 3),
-            this.safeFloat (ohlcv, 4),
+            this.safeNumber (ohlcv, 0),
+            this.safeNumber (ohlcv, 1),
+            this.safeNumber (ohlcv, 2),
+            this.safeNumber (ohlcv, 3),
+            this.safeNumber (ohlcv, 4),
         ];
     }
 
@@ -310,9 +317,9 @@ module.exports = class bitbank extends Exchange {
             const currencyId = this.safeString (balance, 'asset');
             const code = this.safeCurrencyCode (currencyId);
             const account = {
-                'free': this.safeFloat (balance, 'free_amount'),
-                'used': this.safeFloat (balance, 'locked_amount'),
-                'total': this.safeFloat (balance, 'onhand_amount'),
+                'free': this.safeNumber (balance, 'free_amount'),
+                'used': this.safeNumber (balance, 'locked_amount'),
+                'total': this.safeNumber (balance, 'onhand_amount'),
             };
             result[code] = account;
         }
@@ -341,21 +348,15 @@ module.exports = class bitbank extends Exchange {
             symbol = market['symbol'];
         }
         const timestamp = this.safeInteger (order, 'ordered_at');
-        const price = this.safeFloat (order, 'price');
-        const amount = this.safeFloat (order, 'start_amount');
-        const filled = this.safeFloat (order, 'executed_amount');
-        const remaining = this.safeFloat (order, 'remaining_amount');
-        const average = this.safeFloat (order, 'average_price');
-        let cost = undefined;
-        if (filled !== undefined) {
-            if (average !== undefined) {
-                cost = filled * average;
-            }
-        }
+        const price = this.safeNumber (order, 'price');
+        const amount = this.safeNumber (order, 'start_amount');
+        const filled = this.safeNumber (order, 'executed_amount');
+        const remaining = this.safeNumber (order, 'remaining_amount');
+        const average = this.safeNumber (order, 'average_price');
         const status = this.parseOrderStatus (this.safeString (order, 'status'));
         const type = this.safeStringLower (order, 'type');
         const side = this.safeStringLower (order, 'side');
-        return {
+        return this.safeOrder ({
             'id': id,
             'clientOrderId': undefined,
             'datetime': this.iso8601 (timestamp),
@@ -364,9 +365,12 @@ module.exports = class bitbank extends Exchange {
             'status': status,
             'symbol': symbol,
             'type': type,
+            'timeInForce': undefined,
+            'postOnly': undefined,
             'side': side,
             'price': price,
-            'cost': cost,
+            'stopPrice': undefined,
+            'cost': undefined,
             'average': average,
             'amount': amount,
             'filled': filled,
@@ -374,14 +378,14 @@ module.exports = class bitbank extends Exchange {
             'trades': undefined,
             'fee': undefined,
             'info': order,
-        };
+        });
     }
 
     async createOrder (symbol, type, side, amount, price = undefined, params = {}) {
         await this.loadMarkets ();
         const market = this.market (symbol);
         if (price === undefined) {
-            throw new InvalidOrder (this.id + ' createOrder requires a price argument for both market and limit orders');
+            throw new InvalidOrder (this.id + ' createOrder() requires a price argument for both market and limit orders');
         }
         const request = {
             'pair': market['id'],

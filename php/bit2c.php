@@ -89,7 +89,7 @@ class bit2c extends Exchange {
                 ),
             ),
             'options' => array(
-                'fetchTradesMethod' => 'public_get_exchanges_pair_lasttrades',
+                'fetchTradesMethod' => 'public_get_exchanges_pair_trades',
             ),
             'exceptions' => array(
                 'exact' => array(
@@ -158,8 +158,8 @@ class bit2c extends Exchange {
             $currencyId = $this->currency_id($code);
             $uppercase = strtoupper($currencyId);
             if (is_array($balance) && array_key_exists($uppercase, $balance)) {
-                $account['free'] = $this->safe_float($balance, 'AVAILABLE_' . $uppercase);
-                $account['total'] = $this->safe_float($balance, $uppercase);
+                $account['free'] = $this->safe_number($balance, 'AVAILABLE_' . $uppercase);
+                $account['total'] = $this->safe_number($balance, $uppercase);
             }
             $result[$code] = $account;
         }
@@ -182,22 +182,22 @@ class bit2c extends Exchange {
         );
         $ticker = $this->publicGetExchangesPairTicker (array_merge($request, $params));
         $timestamp = $this->milliseconds();
-        $averagePrice = $this->safe_float($ticker, 'av');
-        $baseVolume = $this->safe_float($ticker, 'a');
+        $averagePrice = $this->safe_number($ticker, 'av');
+        $baseVolume = $this->safe_number($ticker, 'a');
         $quoteVolume = null;
         if ($baseVolume !== null && $averagePrice !== null) {
             $quoteVolume = $baseVolume * $averagePrice;
         }
-        $last = $this->safe_float($ticker, 'll');
+        $last = $this->safe_number($ticker, 'll');
         return array(
             'symbol' => $symbol,
             'timestamp' => $timestamp,
             'datetime' => $this->iso8601($timestamp),
             'high' => null,
             'low' => null,
-            'bid' => $this->safe_float($ticker, 'h'),
+            'bid' => $this->safe_number($ticker, 'h'),
             'bidVolume' => null,
-            'ask' => $this->safe_float($ticker, 'l'),
+            'ask' => $this->safe_number($ticker, 'l'),
             'askVolume' => null,
             'vwap' => null,
             'open' => null,
@@ -220,6 +220,12 @@ class bit2c extends Exchange {
         $request = array(
             'pair' => $market['id'],
         );
+        if ($since !== null) {
+            $request['date'] = intval($since);
+        }
+        if ($limit !== null) {
+            $request['limit'] = $limit; // max 100000
+        }
         $response = $this->$method (array_merge($request, $params));
         if (gettype($response) === 'string') {
             throw new ExchangeError($response);
@@ -273,14 +279,8 @@ class bit2c extends Exchange {
 
     public function parse_order($order, $market = null) {
         $timestamp = $this->safe_integer($order, 'created');
-        $price = $this->safe_float($order, 'price');
-        $amount = $this->safe_float($order, 'amount');
-        $cost = null;
-        if ($price !== null) {
-            if ($amount !== null) {
-                $cost = $price * $amount;
-            }
-        }
+        $price = $this->safe_number($order, 'price');
+        $amount = $this->safe_number($order, 'amount');
         $symbol = null;
         if ($market !== null) {
             $symbol = $market['symbol'];
@@ -293,7 +293,7 @@ class bit2c extends Exchange {
         }
         $id = $this->safe_string($order, 'id');
         $status = $this->safe_string($order, 'status');
-        return array(
+        return $this->safe_order(array(
             'id' => $id,
             'clientOrderId' => null,
             'timestamp' => $timestamp,
@@ -302,17 +302,20 @@ class bit2c extends Exchange {
             'status' => $status,
             'symbol' => $symbol,
             'type' => null,
+            'timeInForce' => null,
+            'postOnly' => null,
             'side' => $side,
             'price' => $price,
+            'stopPrice' => null,
             'amount' => $amount,
             'filled' => null,
             'remaining' => null,
-            'cost' => $cost,
+            'cost' => null,
             'trades' => null,
             'fee' => null,
             'info' => $order,
             'average' => null,
-        );
+        ));
     }
 
     public function fetch_my_trades($symbol = null, $since = null, $limit = null, $params = array ()) {
@@ -346,8 +349,8 @@ class bit2c extends Exchange {
         $reference = $this->safe_string($trade, 'reference');
         if ($reference !== null) {
             $timestamp = $this->safe_timestamp($trade, 'ticks');
-            $price = $this->safe_float($trade, 'price');
-            $amount = $this->safe_float($trade, 'firstAmount');
+            $price = $this->safe_number($trade, 'price');
+            $amount = $this->safe_number($trade, 'firstAmount');
             $reference_parts = explode('|', $reference); // $reference contains 'pair|$orderId|tradeId'
             if ($market === null) {
                 $marketId = $this->safe_string($trade, 'pair');
@@ -365,12 +368,12 @@ class bit2c extends Exchange {
             } else if ($side === 1) {
                 $side = 'sell';
             }
-            $feeCost = $this->safe_float($trade, 'feeAmount');
+            $feeCost = $this->safe_number($trade, 'feeAmount');
         } else {
             $timestamp = $this->safe_timestamp($trade, 'date');
             $id = $this->safe_string($trade, 'tid');
-            $price = $this->safe_float($trade, 'price');
-            $amount = $this->safe_float($trade, 'amount');
+            $price = $this->safe_number($trade, 'price');
+            $amount = $this->safe_number($trade, 'amount');
             $side = $this->safe_value($trade, 'isBid');
             if ($side !== null) {
                 if ($side) {
@@ -427,7 +430,7 @@ class bit2c extends Exchange {
             $headers = array(
                 'Content-Type' => 'application/x-www-form-urlencoded',
                 'key' => $this->apiKey,
-                'sign' => $this->decode($signature),
+                'sign' => $signature,
             );
         }
         return array( 'url' => $url, 'method' => $method, 'body' => $body, 'headers' => $headers );

@@ -234,7 +234,7 @@ class coinmate(Exchange):
                 },
                 'limits': {
                     'amount': {
-                        'min': self.safe_float(market, 'minAmount'),
+                        'min': self.safe_number(market, 'minAmount'),
                         'max': None,
                     },
                     'price': {
@@ -260,9 +260,9 @@ class coinmate(Exchange):
             code = self.safe_currency_code(currencyId)
             balance = self.safe_value(balances, currencyId)
             account = self.account()
-            account['free'] = self.safe_float(balance, 'available')
-            account['used'] = self.safe_float(balance, 'reserved')
-            account['total'] = self.safe_float(balance, 'balance')
+            account['free'] = self.safe_number(balance, 'available')
+            account['used'] = self.safe_number(balance, 'reserved')
+            account['total'] = self.safe_number(balance, 'balance')
             result[code] = account
         return self.parse_balance(result)
 
@@ -285,16 +285,16 @@ class coinmate(Exchange):
         response = self.publicGetTicker(self.extend(request, params))
         ticker = self.safe_value(response, 'data')
         timestamp = self.safe_timestamp(ticker, 'timestamp')
-        last = self.safe_float(ticker, 'last')
+        last = self.safe_number(ticker, 'last')
         return {
             'symbol': symbol,
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
-            'high': self.safe_float(ticker, 'high'),
-            'low': self.safe_float(ticker, 'low'),
-            'bid': self.safe_float(ticker, 'bid'),
+            'high': self.safe_number(ticker, 'high'),
+            'low': self.safe_number(ticker, 'low'),
+            'bid': self.safe_number(ticker, 'bid'),
             'bidVolume': None,
-            'ask': self.safe_float(ticker, 'ask'),
+            'ask': self.safe_number(ticker, 'ask'),
             'vwap': None,
             'askVolume': None,
             'open': None,
@@ -304,7 +304,7 @@ class coinmate(Exchange):
             'change': None,
             'percentage': None,
             'average': None,
-            'baseVolume': self.safe_float(ticker, 'amount'),
+            'baseVolume': self.safe_number(ticker, 'amount'),
             'quoteVolume': None,
             'info': ticker,
         }
@@ -367,8 +367,8 @@ class coinmate(Exchange):
         #     }
         #
         timestamp = self.safe_integer(item, 'timestamp')
-        amount = self.safe_float(item, 'amount')
-        fee = self.safe_float(item, 'fee')
+        amount = self.safe_number(item, 'amount')
+        fee = self.safe_number(item, 'fee')
         txid = self.safe_string(item, 'txid')
         address = self.safe_string(item, 'destination')
         tag = self.safe_string(item, 'destinationTag')
@@ -390,7 +390,7 @@ class coinmate(Exchange):
             'status': status,
             'fee': {
                 'cost': fee,
-                'currency': currency,
+                'currency': code,
             },
             'info': item,
         }
@@ -439,23 +439,10 @@ class coinmate(Exchange):
         #         "tradeType":"BUY"
         #     }
         #
-        symbol = None
         marketId = self.safe_string(trade, 'currencyPair')
-        quote = None
-        if marketId is not None:
-            if marketId in self.markets_by_id[marketId]:
-                market = self.markets_by_id[marketId]
-                quote = market['quote']
-            else:
-                baseId, quoteId = marketId.split('_')
-                base = self.safe_currency_code(baseId)
-                quote = self.safe_currency_code(quoteId)
-                symbol = base + '/' + quote
-        if symbol is None:
-            if market is not None:
-                symbol = market['symbol']
-        price = self.safe_float(trade, 'price')
-        amount = self.safe_float(trade, 'amount')
+        market = self.safe_market(marketId, market, '_')
+        price = self.safe_number(trade, 'price')
+        amount = self.safe_number(trade, 'amount')
         cost = None
         if amount is not None:
             if price is not None:
@@ -466,11 +453,11 @@ class coinmate(Exchange):
         id = self.safe_string(trade, 'transactionId')
         timestamp = self.safe_integer_2(trade, 'timestamp', 'createdTimestamp')
         fee = None
-        feeCost = self.safe_float(trade, 'fee')
+        feeCost = self.safe_number(trade, 'fee')
         if feeCost is not None:
             fee = {
                 'cost': feeCost,
-                'currency': quote,
+                'currency': market['quote'],
             }
         takerOrMaker = self.safe_string(trade, 'feeType')
         takerOrMaker = 'maker' if (takerOrMaker == 'MAKER') else 'taker'
@@ -479,7 +466,7 @@ class coinmate(Exchange):
             'info': trade,
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
-            'symbol': symbol,
+            'symbol': market['symbol'],
             'type': type,
             'side': side,
             'order': orderId,
@@ -524,7 +511,7 @@ class coinmate(Exchange):
 
     def fetch_orders(self, symbol=None, since=None, limit=None, params={}):
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' fetchOrders requires a symbol argument')
+            raise ArgumentsRequired(self.id + ' fetchOrders() requires a symbol argument')
         self.load_markets()
         market = self.market(symbol)
         request = {
@@ -598,11 +585,11 @@ class coinmate(Exchange):
         id = self.safe_string(order, 'id')
         timestamp = self.safe_integer(order, 'timestamp')
         side = self.safe_string_lower(order, 'type')
-        price = self.safe_float(order, 'price')
-        amount = self.safe_float(order, 'originalAmount')
-        remaining = self.safe_float(order, 'remainingAmount')
+        price = self.safe_number(order, 'price')
+        amount = self.safe_number(order, 'originalAmount')
+        remaining = self.safe_number(order, 'remainingAmount')
         if remaining is None:
-            remaining = self.safe_float(order, 'amount')
+            remaining = self.safe_number(order, 'amount')
         status = self.parse_order_status(self.safe_string(order, 'status'))
         type = self.parse_order_type(self.safe_string(order, 'orderTradeType'))
         filled = None
@@ -613,20 +600,11 @@ class coinmate(Exchange):
                 status = 'closed'
             if price is not None:
                 cost = filled * price
-        average = self.safe_float(order, 'avgPrice')
-        symbol = None
+        average = self.safe_number(order, 'avgPrice')
         marketId = self.safe_string(order, 'currencyPair')
-        if marketId is not None:
-            if marketId in self.markets_by_id:
-                market = self.markets_by_id[marketId]
-            else:
-                baseId, quoteId = marketId.split('_')
-                base = self.safe_currency_code(baseId)
-                quote = self.safe_currency_code(quoteId)
-                symbol = base + '/' + quote
-        if (symbol is None) and (market is not None):
-            symbol = market['symbol']
+        symbol = self.safe_symbol(marketId, market, '_')
         clientOrderId = self.safe_string(order, 'clientOrderId')
+        stopPrice = self.safe_number(order, 'stopPrice')
         return {
             'id': id,
             'clientOrderId': clientOrderId,
@@ -635,8 +613,11 @@ class coinmate(Exchange):
             'lastTradeTimestamp': None,
             'symbol': symbol,
             'type': type,
+            'timeInForce': None,
+            'postOnly': None,
             'side': side,
             'price': price,
+            'stopPrice': stopPrice,
             'amount': amount,
             'cost': cost,
             'average': average,

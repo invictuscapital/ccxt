@@ -11,7 +11,6 @@ try:
     basestring  # Python 3
 except NameError:
     basestring = str  # Python 2
-import base64
 import hashlib
 from ccxt.base.errors import ExchangeError
 from ccxt.base.errors import AuthenticationError
@@ -123,7 +122,7 @@ class lakebtc(Exchange):
             currencyId = currencyIds[i]
             code = self.safe_currency_code(currencyId)
             account = self.account()
-            account['total'] = self.safe_float(balances, currencyId)
+            account['total'] = self.safe_number(balances, currencyId)
             result[code] = account
         return self.parse_balance(result)
 
@@ -140,16 +139,16 @@ class lakebtc(Exchange):
         symbol = None
         if market is not None:
             symbol = market['symbol']
-        last = self.safe_float(ticker, 'last')
+        last = self.safe_number(ticker, 'last')
         return {
             'symbol': symbol,
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
-            'high': self.safe_float(ticker, 'high'),
-            'low': self.safe_float(ticker, 'low'),
-            'bid': self.safe_float(ticker, 'bid'),
+            'high': self.safe_number(ticker, 'high'),
+            'low': self.safe_number(ticker, 'low'),
+            'bid': self.safe_number(ticker, 'bid'),
             'bidVolume': None,
-            'ask': self.safe_float(ticker, 'ask'),
+            'ask': self.safe_number(ticker, 'ask'),
             'askVolume': None,
             'vwap': None,
             'open': None,
@@ -159,7 +158,7 @@ class lakebtc(Exchange):
             'change': None,
             'percentage': None,
             'average': None,
-            'baseVolume': self.safe_float(ticker, 'volume'),
+            'baseVolume': self.safe_number(ticker, 'volume'),
             'quoteVolume': None,
             'info': ticker,
         }
@@ -170,14 +169,12 @@ class lakebtc(Exchange):
         ids = list(response.keys())
         result = {}
         for i in range(0, len(ids)):
-            symbol = ids[i]
-            ticker = response[symbol]
-            market = None
-            if symbol in self.markets_by_id:
-                market = self.markets_by_id[symbol]
-                symbol = market['symbol']
+            marketId = ids[i]
+            ticker = response[marketId]
+            market = self.safe_market(marketId)
+            symbol = market['symbol']
             result[symbol] = self.parse_ticker(ticker, market)
-        return result
+        return self.filter_by_array(result, 'symbol', symbols)
 
     async def fetch_ticker(self, symbol, params={}):
         await self.load_markets()
@@ -188,8 +185,8 @@ class lakebtc(Exchange):
     def parse_trade(self, trade, market=None):
         timestamp = self.safe_timestamp(trade, 'date')
         id = self.safe_string(trade, 'tid')
-        price = self.safe_float(trade, 'price')
-        amount = self.safe_float(trade, 'amount')
+        price = self.safe_number(trade, 'price')
+        amount = self.safe_number(trade, 'amount')
         cost = None
         if price is not None:
             if amount is not None:
@@ -290,8 +287,8 @@ class lakebtc(Exchange):
             ]
             query = '&'.join(query)
             signature = self.hmac(self.encode(query), self.encode(self.secret), hashlib.sha1)
-            auth = self.encode(self.apiKey + ':' + signature)
-            signature64 = self.decode(base64.b64encode(auth))
+            auth = self.apiKey + ':' + signature
+            signature64 = self.decode(self.string_to_base64(auth))
             headers = {
                 'Json-Rpc-Tonce': nonceAsString,
                 'Authorization': 'Basic ' + signature64,

@@ -136,6 +136,9 @@ class aofex extends Exchange {
                     'show_all' => '0', // '1' to show zero balances
                 ),
             ),
+            'commonCurrencies' => array(
+                'CPC' => 'Consensus Planet Coin',
+            ),
         ));
     }
 
@@ -194,8 +197,8 @@ class aofex extends Exchange {
             $symbol = $base . '/' . $quote;
             $numericId = $this->safe_integer($market, 'id');
             $precision = $this->safe_value($precisions, $id, array());
-            $makerFee = $this->safe_float($market, 'maker_fee');
-            $takerFee = $this->safe_float($market, 'taker_fee');
+            $makerFee = $this->safe_number($market, 'maker_fee');
+            $takerFee = $this->safe_number($market, 'taker_fee');
             $result[] = array(
                 'id' => $id,
                 'numericId' => $numericId,
@@ -213,12 +216,12 @@ class aofex extends Exchange {
                 ),
                 'limits' => array(
                     'amount' => array(
-                        'min' => $this->safe_float($market, 'min_size'),
-                        'max' => $this->safe_float($market, 'max_size'),
+                        'min' => $this->safe_number($market, 'min_size'),
+                        'max' => $this->safe_number($market, 'max_size'),
                     ),
                     'price' => array(
-                        'min' => $this->safe_float($market, 'min_price'),
-                        'max' => $this->safe_float($market, 'max_price'),
+                        'min' => $this->safe_number($market, 'min_price'),
+                        'max' => $this->safe_number($market, 'max_price'),
                     ),
                     'cost' => array(
                         'min' => null,
@@ -246,11 +249,11 @@ class aofex extends Exchange {
         //
         return array(
             $this->safe_timestamp($ohlcv, 'id'),
-            $this->safe_float($ohlcv, 'open'),
-            $this->safe_float($ohlcv, 'high'),
-            $this->safe_float($ohlcv, 'low'),
-            $this->safe_float($ohlcv, 'close'),
-            $this->safe_float($ohlcv, 'amount'),
+            $this->safe_number($ohlcv, 'open'),
+            $this->safe_number($ohlcv, 'high'),
+            $this->safe_number($ohlcv, 'low'),
+            $this->safe_number($ohlcv, 'close'),
+            $this->safe_number($ohlcv, 'amount'),
         );
     }
 
@@ -329,8 +332,8 @@ class aofex extends Exchange {
             $currencyId = $this->safe_string($balance, 'currency');
             $code = $this->safe_currency_code($currencyId);
             $account = $this->account();
-            $account['free'] = $this->safe_float($balance, 'available');
-            $account['used'] = $this->safe_float($balance, 'frozen');
+            $account['free'] = $this->safe_number($balance, 'available');
+            $account['used'] = $this->safe_number($balance, 'frozen');
             $result[$code] = $account;
         }
         return $this->parse_balance($result);
@@ -356,8 +359,8 @@ class aofex extends Exchange {
         return array(
             'info' => $response,
             'symbol' => $symbol,
-            'maker' => $this->safe_float($result, 'fromFee'),
-            'taker' => $this->safe_float($result, 'toFee'),
+            'maker' => $this->safe_number($result, 'fromFee'),
+            'taker' => $this->safe_number($result, 'toFee'),
         );
     }
 
@@ -414,32 +417,28 @@ class aofex extends Exchange {
         if ($market) {
             $symbol = $market['symbol'];
         }
-        $open = $this->safe_float($ticker, 'open');
-        $last = $this->safe_float($ticker, 'close');
+        $open = $this->safe_number($ticker, 'open');
+        $last = $this->safe_number($ticker, 'close');
         $change = null;
         if ($symbol !== null) {
-            $change = floatval ($this->price_to_precision($symbol, $last - $open));
+            $change = floatval($this->price_to_precision($symbol, $last - $open));
         } else {
             $change = $last - $open;
         }
         $average = $this->sum($last, $open) / 2;
         $percentage = $change / $open * 100;
-        $baseVolume = $this->safe_float($ticker, 'amount');
-        $quoteVolume = $this->safe_float($ticker, 'vol');
-        $vwap = null;
-        if ($quoteVolume !== null) {
-            if ($baseVolume !== null) {
-                if ($baseVolume > 0) {
-                    $vwap = floatval ($this->price_to_precision($symbol, $quoteVolume / $baseVolume));
-                }
-            }
+        $baseVolume = $this->safe_number($ticker, 'amount');
+        $quoteVolume = $this->safe_number($ticker, 'vol');
+        $vwap = $this->vwap($baseVolume, $quoteVolume);
+        if ($vwap !== null) {
+            $vwap = floatval($this->price_to_precision($symbol, $vwap));
         }
         return array(
             'symbol' => $symbol,
             'timestamp' => $timestamp,
             'datetime' => $this->iso8601($timestamp),
-            'high' => $this->safe_float($ticker, 'high'),
-            'low' => $this->safe_float($ticker, 'low'),
+            'high' => $this->safe_number($ticker, 'high'),
+            'low' => $this->safe_number($ticker, 'low'),
             'bid' => null,
             'bidVolume' => null,
             'ask' => null,
@@ -491,23 +490,10 @@ class aofex extends Exchange {
         $result = array();
         for ($i = 0; $i < count($tickers); $i++) {
             $marketId = $this->safe_string($tickers[$i], 'symbol');
-            $market = null;
-            $symbol = $marketId;
-            if ($marketId !== null) {
-                if (is_array($this->markets_by_id) && array_key_exists($marketId, $this->markets_by_id)) {
-                    $market = $this->markets_by_id[$marketId];
-                    $symbol = $market['symbol'];
-                } else {
-                    list($baseId, $quoteId) = explode('-', $marketId);
-                    $base = $this->safe_currency_code($baseId);
-                    $quote = $this->safe_currency_code($quoteId);
-                    $symbol = $base . '/' . $quote;
-                }
-            }
+            $market = $this->safe_market($marketId, null, '-');
+            $symbol = $market['symbol'];
             $data = $this->safe_value($tickers[$i], 'data', array());
-            $ticker = $this->parse_ticker($data, $market);
-            $ticker['symbol'] = $symbol;
-            $result[$symbol] = $ticker;
+            $result[$symbol] = $this->parse_ticker($data, $market);
         }
         return $this->filter_by_array($result, 'symbol', $symbols);
     }
@@ -570,13 +556,13 @@ class aofex extends Exchange {
             $symbol = $market['symbol'];
         }
         $side = $this->safe_string($trade, 'direction');
-        $price = $this->safe_float($trade, 'price');
-        $amount = $this->safe_float_2($trade, 'amount', 'number');
-        $cost = $this->safe_float($trade, 'total_price');
+        $price = $this->safe_number($trade, 'price');
+        $amount = $this->safe_number_2($trade, 'amount', 'number');
+        $cost = $this->safe_number($trade, 'total_price');
         if (($cost === null) && ($price !== null) && ($amount !== null)) {
             $cost = $price * $amount;
         }
-        $feeCost = $this->safe_float($trade, 'fee');
+        $feeCost = $this->safe_number($trade, 'fee');
         $fee = null;
         if ($feeCost !== null) {
             $feeCurrencyCode = null;
@@ -669,7 +655,7 @@ class aofex extends Exchange {
         //
         //     {
         //         "order_sn" => "BL74426415849672087836G48N1",
-        //         "$symbol" => "ETH-USDT",
+        //         "symbol" => "ETH-USDT",
         //         "ctime" => "2020-03-23 20:40:08",
         //         "$type" => 2,
         //         "$side" => "buy",
@@ -685,7 +671,7 @@ class aofex extends Exchange {
         //
         //     {
         //         order_sn => 'BM7442641584965237751ZMAKJ5',
-        //         $symbol => 'ETH-USDT',
+        //         symbol => 'ETH-USDT',
         //         ctime => '2020-03-23 20:07:17',
         //         $type => 1,
         //         $side => 'buy',
@@ -711,25 +697,8 @@ class aofex extends Exchange {
         $id = $this->safe_string($order, 'order_sn');
         $orderStatus = $this->safe_string($order, 'status');
         $status = $this->parse_order_status($orderStatus);
-        $symbol = null;
         $marketId = $this->safe_string($order, 'symbol');
-        $base = null;
-        $quote = null;
-        if ($marketId !== null) {
-            if (is_array($this->markets_by_id) && array_key_exists($marketId, $this->markets_by_id)) {
-                $market = $this->markets_by_id[$marketId];
-            } else {
-                list($baseId, $quoteId) = explode('-', $marketId);
-                $base = $this->safe_currency_code($baseId);
-                $quote = $this->safe_currency_code($quoteId);
-                $symbol = $base . '/' . $quote;
-            }
-        }
-        if (($symbol === null) && ($market !== null)) {
-            $symbol = $market['symbol'];
-            $base = $market['base'];
-            $quote = $market['quote'];
-        }
+        $market = $this->safe_market($marketId, $market, '-');
         $timestamp = $this->parse8601($this->safe_string($order, 'ctime'));
         if ($timestamp !== null) {
             $timestamp -= 28800000; // 8 hours, adjust to UTC
@@ -737,21 +706,21 @@ class aofex extends Exchange {
         $orderType = $this->safe_string($order, 'type');
         $type = ($orderType === '2') ? 'limit' : 'market';
         $side = $this->safe_string($order, 'side');
-        // $amount = $this->safe_float($order, 'number');
-        // $price = $this->safe_float($order, 'price');
+        // $amount = $this->safe_number($order, 'number');
+        // $price = $this->safe_number($order, 'price');
         $cost = null;
         $price = null;
         $amount = null;
         $average = null;
-        $number = $this->safe_float($order, 'number');
-        $totalPrice = $this->safe_float($order, 'total_price');
+        $number = $this->safe_number($order, 'number');
+        $totalPrice = $this->safe_number($order, 'total_price');
         if ($type === 'limit') {
             $amount = $number;
-            $price = $this->safe_float($order, 'price');
+            $price = $this->safe_number($order, 'price');
         } else {
-            $average = $this->safe_float($order, 'deal_price');
+            $average = $this->safe_number($order, 'deal_price');
             if ($side === 'buy') {
-                $amount = $this->safe_float($order, 'deal_number');
+                $amount = $this->safe_number($order, 'deal_number');
             } else {
                 $amount = $number;
             }
@@ -797,7 +766,7 @@ class aofex extends Exchange {
                     }
                 }
                 if ($feeCost !== null) {
-                    $feeCurrencyCode = ($side === 'buy') ? $base : $quote;
+                    $feeCurrencyCode = ($side === 'buy') ? $market['base'] : $market['quote'];
                     $fee = array(
                         'cost' => $feeCost,
                         'currency' => $feeCurrencyCode,
@@ -833,10 +802,13 @@ class aofex extends Exchange {
             'datetime' => $this->iso8601($timestamp),
             'lastTradeTimestamp' => $lastTradeTimestamp,
             'status' => $status,
-            'symbol' => $symbol,
+            'symbol' => $market['symbol'],
             'type' => $type,
+            'timeInForce' => null,
+            'postOnly' => null,
             'side' => $side,
             'price' => $price,
+            'stopPrice' => null,
             'cost' => $cost,
             'average' => $average,
             'amount' => $amount,

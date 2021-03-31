@@ -4,7 +4,6 @@
 # https://github.com/ccxt/ccxt/blob/master/CONTRIBUTING.md#how-to-contribute-code
 
 from ccxt.base.exchange import Exchange
-import base64
 import hashlib
 
 
@@ -83,15 +82,17 @@ class bl3p(Exchange):
             available = self.safe_value(wallet, 'available', {})
             balance = self.safe_value(wallet, 'balance', {})
             account = self.account()
-            account['free'] = self.safe_float(available, 'value')
-            account['total'] = self.safe_float(balance, 'value')
+            account['free'] = self.safe_number(available, 'value')
+            account['total'] = self.safe_number(balance, 'value')
             result[code] = account
         return self.parse_balance(result)
 
     def parse_bid_ask(self, bidask, priceKey=0, amountKey=1):
+        price = self.safe_number(bidask, priceKey)
+        size = self.safe_number(bidask, amountKey)
         return [
-            bidask[priceKey] / 100000.0,
-            bidask[amountKey] / 100000000.0,
+            price / 100000.0,
+            size / 100000000.0,
         ]
 
     def fetch_order_book(self, symbol, limit=None, params={}):
@@ -109,16 +110,16 @@ class bl3p(Exchange):
         }
         ticker = self.publicGetMarketTicker(self.extend(request, params))
         timestamp = self.safe_timestamp(ticker, 'timestamp')
-        last = self.safe_float(ticker, 'last')
+        last = self.safe_number(ticker, 'last')
         return {
             'symbol': symbol,
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
-            'high': self.safe_float(ticker, 'high'),
-            'low': self.safe_float(ticker, 'low'),
-            'bid': self.safe_float(ticker, 'bid'),
+            'high': self.safe_number(ticker, 'high'),
+            'low': self.safe_number(ticker, 'low'),
+            'bid': self.safe_number(ticker, 'bid'),
             'bidVolume': None,
-            'ask': self.safe_float(ticker, 'ask'),
+            'ask': self.safe_number(ticker, 'ask'),
             'askVolume': None,
             'vwap': None,
             'open': None,
@@ -128,7 +129,7 @@ class bl3p(Exchange):
             'change': None,
             'percentage': None,
             'average': None,
-            'baseVolume': self.safe_float(ticker['volume'], '24h'),
+            'baseVolume': self.safe_number(ticker['volume'], '24h'),
             'quoteVolume': None,
             'info': ticker,
         }
@@ -136,10 +137,10 @@ class bl3p(Exchange):
     def parse_trade(self, trade, market=None):
         id = self.safe_string(trade, 'trade_id')
         timestamp = self.safe_integer(trade, 'date')
-        price = self.safe_float(trade, 'price_int')
+        price = self.safe_number(trade, 'price_int')
         if price is not None:
             price /= 100000.0
-        amount = self.safe_float(trade, 'amount_int')
+        amount = self.safe_number(trade, 'amount_int')
         if amount is not None:
             amount /= 100000000.0
         cost = None
@@ -207,13 +208,13 @@ class bl3p(Exchange):
             self.check_required_credentials()
             nonce = self.nonce()
             body = self.urlencode(self.extend({'nonce': nonce}, query))
-            secret = base64.b64decode(self.secret)
+            secret = self.base64_to_binary(self.secret)
             # eslint-disable-next-line quotes
             auth = request + "\0" + body
             signature = self.hmac(self.encode(auth), secret, hashlib.sha512, 'base64')
             headers = {
                 'Content-Type': 'application/x-www-form-urlencoded',
                 'Rest-Key': self.apiKey,
-                'Rest-Sign': self.decode(signature),
+                'Rest-Sign': signature,
             }
         return {'url': url, 'method': method, 'body': body, 'headers': headers}

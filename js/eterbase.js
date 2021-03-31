@@ -3,7 +3,7 @@
 // ----------------------------------------------------------------------------
 
 const Exchange = require ('./base/Exchange');
-const { ArgumentsRequired, InvalidOrder, ExchangeError, BadRequest } = require ('./base/errors');
+const { ArgumentsRequired, InvalidOrder, ExchangeError, BadRequest, BadSymbol } = require ('./base/errors');
 const { TRUNCATE, SIGNIFICANT_DIGITS } = require ('./base/functions/number');
 
 // ----------------------------------------------------------------------------
@@ -120,6 +120,7 @@ module.exports = class eterbase extends Exchange {
                 'exact': {
                     'Invalid cost': InvalidOrder, // {"message":"Invalid cost","_links":{"self":{"href":"/orders","templated":false}}}
                     'Invalid order ID': InvalidOrder, // {"message":"Invalid order ID","_links":{"self":{"href":"/orders/4a151805-d594-4a96-9d64-e3984f2441f7","templated":false}}}
+                    'Invalid market !': BadSymbol, // {"message":"Invalid market !","_links":{"self":{"href":"/markets/300/order-book","templated":false}}}
                 },
                 'broad': {
                     'Failed to convert argument': BadRequest,
@@ -216,7 +217,7 @@ module.exports = class eterbase extends Exchange {
             const rule = rules[i];
             const attribute = this.safeString (rule, 'attribute');
             const condition = this.safeString (rule, 'condition');
-            const value = this.safeFloat (rule, 'value');
+            const value = this.safeNumber (rule, 'value');
             if ((attribute === 'Qty') && (condition === 'Min')) {
                 minAmount = value;
             } else if ((attribute === 'Qty') && (condition === 'Max')) {
@@ -306,7 +307,7 @@ module.exports = class eterbase extends Exchange {
                 'type': type,
                 'name': name,
                 'active': active,
-                'fee': this.safeFloat (currency, 'withdrawalFee'),
+                'fee': this.safeNumber (currency, 'withdrawalFee'),
                 'precision': precision,
                 'limits': {
                     'amount': {
@@ -322,8 +323,8 @@ module.exports = class eterbase extends Exchange {
                         'max': undefined,
                     },
                     'withdraw': {
-                        'min': this.safeFloat (currency, 'withdrawalMin'),
-                        'max': this.safeFloat (currency, 'withdrawalMax'),
+                        'min': this.safeNumber (currency, 'withdrawalMin'),
+                        'max': this.safeNumber (currency, 'withdrawalMax'),
                     },
                 },
             };
@@ -348,28 +349,19 @@ module.exports = class eterbase extends Exchange {
         //     }
         //
         const marketId = this.safeString (ticker, 'marketId');
-        if (marketId in this.markets_by_id) {
-            market = this.markets_by_id[marketId];
-        }
-        let symbol = undefined;
-        if ((symbol === undefined) && (market !== undefined)) {
-            symbol = market['symbol'];
-        }
+        const symbol = this.safeSymbol (marketId, market);
         const timestamp = this.safeInteger (ticker, 'time');
-        const last = this.safeFloat (ticker, 'price');
-        const baseVolume = this.safeFloat (ticker, 'volumeBase');
-        const quoteVolume = this.safeFloat (ticker, 'volume');
-        let vwap = undefined;
-        if ((quoteVolume !== undefined) && (baseVolume !== undefined) && baseVolume) {
-            vwap = quoteVolume / baseVolume;
-        }
-        const percentage = this.safeFloat (ticker, 'change');
+        const last = this.safeNumber (ticker, 'price');
+        const baseVolume = this.safeNumber (ticker, 'volumeBase');
+        const quoteVolume = this.safeNumber (ticker, 'volume');
+        const vwap = this.vwap (baseVolume, quoteVolume);
+        const percentage = this.safeNumber (ticker, 'change');
         const result = {
             'symbol': symbol,
             'timestamp': timestamp,
             'datetime': this.iso8601 (timestamp),
-            'high': this.safeFloat (ticker, 'high'),
-            'low': this.safeFloat (ticker, 'low'),
+            'high': this.safeNumber (ticker, 'high'),
+            'low': this.safeNumber (ticker, 'low'),
             'bid': undefined,
             'bidVolume': undefined,
             'ask': undefined,
@@ -409,14 +401,6 @@ module.exports = class eterbase extends Exchange {
         //     }
         //
         return this.parseTicker (response, market);
-    }
-
-    parseTickers (tickers, symbols = undefined) {
-        const result = [];
-        for (let i = 0; i < tickers.length; i++) {
-            result.push (this.parseTicker (tickers[i]));
-        }
-        return this.filterByArray (result, 'symbol', symbols);
     }
 
     async fetchTickers (symbols = undefined, params = {}) {
@@ -473,10 +457,10 @@ module.exports = class eterbase extends Exchange {
         //         "filledAt": 1556355722341
         //     }
         //
-        const price = this.safeFloat (trade, 'price');
-        const amount = this.safeFloat (trade, 'qty');
+        const price = this.safeNumber (trade, 'price');
+        const amount = this.safeNumber (trade, 'qty');
         let fee = undefined;
-        const feeCost = this.safeFloat (trade, 'fee');
+        const feeCost = this.safeNumber (trade, 'fee');
         if (feeCost !== undefined) {
             const feeCurrencyId = this.safeString (trade, 'feeAsset');
             const feeCurrencyCode = this.safeCurrencyCode (feeCurrencyId);
@@ -485,7 +469,7 @@ module.exports = class eterbase extends Exchange {
                 'currency': feeCurrencyCode,
             };
         }
-        let cost = this.safeFloat (trade, 'qty');
+        let cost = this.safeNumber (trade, 'qty');
         if ((cost === undefined) && (price !== undefined) && (amount !== undefined)) {
             cost = price * amount;
         }
@@ -499,14 +483,8 @@ module.exports = class eterbase extends Exchange {
         }
         const orderId = this.safeString (trade, 'orderId');
         const id = this.safeString (trade, 'id');
-        let symbol = undefined;
         const marketId = this.safeString (trade, 'marketId');
-        if (marketId in this.markets_by_id) {
-            market = this.markets_by_id[marketId];
-        }
-        if ((symbol === undefined) && (market !== undefined)) {
-            symbol = market['symbol'];
-        }
+        const symbol = this.safeSymbol (marketId, market);
         return {
             'info': trade,
             'id': id,
@@ -591,11 +569,11 @@ module.exports = class eterbase extends Exchange {
         //
         return [
             this.safeInteger (ohlcv, 'time'),
-            this.safeFloat (ohlcv, 'open'),
-            this.safeFloat (ohlcv, 'high'),
-            this.safeFloat (ohlcv, 'low'),
-            this.safeFloat (ohlcv, 'close'),
-            this.safeFloat (ohlcv, 'volume'),
+            this.safeNumber (ohlcv, 'open'),
+            this.safeNumber (ohlcv, 'high'),
+            this.safeNumber (ohlcv, 'low'),
+            this.safeNumber (ohlcv, 'close'),
+            this.safeNumber (ohlcv, 'volume'),
         ];
     }
 
@@ -619,7 +597,7 @@ module.exports = class eterbase extends Exchange {
             request['start'] = now - duration * limit * 1000;
             request['end'] = now;
         } else {
-            throw new ArgumentsRequired (this.id + ' fetchOHLCV requires a since argument, or a limit argument, or both');
+            throw new ArgumentsRequired (this.id + ' fetchOHLCV() requires a since argument, or a limit argument, or both');
         }
         await this.loadMarkets ();
         const market = this.market (symbol);
@@ -659,9 +637,9 @@ module.exports = class eterbase extends Exchange {
             const currencyId = this.safeString (balance, 'assetId');
             const code = this.safeCurrencyCode (currencyId);
             const account = {
-                'free': this.safeFloat (balance, 'available'),
-                'used': this.safeFloat (balance, 'reserved'),
-                'total': this.safeFloat (balance, 'balance'),
+                'free': this.safeNumber (balance, 'available'),
+                'used': this.safeNumber (balance, 'reserved'),
+                'total': this.safeNumber (balance, 'balance'),
             };
             result[code] = account;
         }
@@ -774,13 +752,7 @@ module.exports = class eterbase extends Exchange {
         const id = this.safeString (order, 'id');
         const timestamp = this.safeInteger (order, 'placedAt');
         const marketId = this.safeInteger (order, 'marketId');
-        if (marketId in this.markets_by_id) {
-            market = this.markets_by_id[marketId];
-        }
-        let symbol = undefined;
-        if (market !== undefined) {
-            symbol = market['symbol'];
-        }
+        const symbol = this.safeSymbol (marketId, market);
         let status = this.parseOrderStatus (this.safeString (order, 'state'));
         if (status === 'closed') {
             status = this.parseOrderStatus (this.safeString (order, 'closeReason'));
@@ -798,18 +770,18 @@ module.exports = class eterbase extends Exchange {
         } else {
             type = 'stoplimit';
         }
-        let price = this.safeFloat (order, 'limitPrice');
-        const amount = this.safeFloat (order, 'qty');
-        let remaining = this.safeFloat (order, 'remainingQty');
+        let price = this.safeNumber (order, 'limitPrice');
+        const amount = this.safeNumber (order, 'qty');
+        let remaining = this.safeNumber (order, 'remainingQty');
         let filled = undefined;
-        const remainingCost = this.safeFloat (order, 'remainingCost');
+        const remainingCost = this.safeNumber (order, 'remainingCost');
         if ((remainingCost !== undefined) && (remainingCost === 0.0)) {
             remaining = 0;
         }
         if ((amount !== undefined) && (remaining !== undefined)) {
             filled = Math.max (0, amount - remaining);
         }
-        const cost = this.safeFloat (order, 'cost');
+        const cost = this.safeNumber (order, 'cost');
         if (type === 'market') {
             if (price === 0.0) {
                 if ((cost !== undefined) && (filled !== undefined)) {
@@ -825,6 +797,9 @@ module.exports = class eterbase extends Exchange {
                 average = cost / filled;
             }
         }
+        const timeInForce = this.safeString (order, 'timeInForce');
+        const stopPrice = this.safeNumber (order, 'stopPrice');
+        const postOnly = this.safeValue (order, 'postOnly');
         return {
             'info': order,
             'id': id,
@@ -834,8 +809,11 @@ module.exports = class eterbase extends Exchange {
             'lastTradeTimestamp': undefined,
             'symbol': symbol,
             'type': type,
+            'timeInForce': timeInForce,
+            'postOnly': postOnly,
             'side': side,
             'price': price,
+            'stopPrice': stopPrice,
             'amount': amount,
             'cost': cost,
             'average': average,
@@ -993,7 +971,7 @@ module.exports = class eterbase extends Exchange {
         }
         if ((uppercaseType === 'MARKET') && (uppercaseSide === 'BUY')) {
             // for market buy it requires the amount of quote currency to spend
-            let cost = this.safeFloat (params, 'cost');
+            let cost = this.safeNumber (params, 'cost');
             if (this.options['createMarketBuyOrderRequiresPrice']) {
                 if (cost === undefined) {
                     if (price !== undefined) {
@@ -1125,8 +1103,7 @@ module.exports = class eterbase extends Exchange {
                 message += "\ndigest" + ':' + ' ' + digest;  // eslint-disable-line quotes
                 headersCSV += ' ' + 'digest';
             }
-            const signature64 = this.hmac (this.encode (message), this.encode (this.secret), 'sha256', 'base64');
-            const signature = this.decode (signature64);
+            const signature = this.hmac (this.encode (message), this.encode (this.secret), 'sha256', 'base64');
             const authorizationHeader = 'hmac username="' + this.apiKey + '",algorithm="hmac-sha256",headers="' + headersCSV + '",' + 'signature="' + signature + '"';
             httpHeaders = {
                 'Date': date,

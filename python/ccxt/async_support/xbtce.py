@@ -154,9 +154,9 @@ class xbtce(Exchange):
             currencyId = self.safe_string(balance, 'Currency')
             code = self.safe_currency_code(currencyId)
             account = {
-                'free': self.safe_float(balance, 'FreeAmount'),
-                'used': self.safe_float(balance, 'LockedAmount'),
-                'total': self.safe_float(balance, 'Amount'),
+                'free': self.safe_number(balance, 'FreeAmount'),
+                'used': self.safe_number(balance, 'LockedAmount'),
+                'total': self.safe_number(balance, 'Amount'),
             }
             result[code] = account
         return self.parse_balance(result)
@@ -232,7 +232,7 @@ class xbtce(Exchange):
                 symbol = base + '/' + quote
             ticker = tickers[id]
             result[symbol] = self.parse_ticker(ticker, market)
-        return result
+        return self.filter_by_array(result, 'symbol', symbols)
 
     async def fetch_ticker(self, symbol, params={}):
         await self.load_markets()
@@ -256,11 +256,11 @@ class xbtce(Exchange):
     def parse_ohlcv(self, ohlcv, market=None):
         return [
             self.safe_integer(ohlcv, 'Timestamp'),
-            self.safe_float(ohlcv, 'Open'),
-            self.safe_float(ohlcv, 'High'),
-            self.safe_float(ohlcv, 'Low'),
-            self.safe_float(ohlcv, 'Close'),
-            self.safe_float(ohlcv, 'Volume'),
+            self.safe_number(ohlcv, 'Open'),
+            self.safe_number(ohlcv, 'High'),
+            self.safe_number(ohlcv, 'Low'),
+            self.safe_number(ohlcv, 'Close'),
+            self.safe_number(ohlcv, 'Volume'),
         ]
 
     async def fetch_ohlcv(self, symbol, timeframe='1m', since=None, limit=None, params={}):
@@ -334,6 +334,6 @@ class xbtce(Exchange):
             if body:
                 auth += body
             signature = self.hmac(self.encode(auth), self.encode(self.secret), hashlib.sha256, 'base64')
-            credentials = self.uid + ':' + self.apiKey + ':' + nonce + ':' + self.decode(signature)
+            credentials = self.uid + ':' + self.apiKey + ':' + nonce + ':' + signature
             headers['Authorization'] = 'HMAC ' + credentials
         return {'url': url, 'method': method, 'body': body, 'headers': headers}

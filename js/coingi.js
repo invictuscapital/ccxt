@@ -165,10 +165,10 @@ module.exports = class coingi extends Exchange {
             const currencyId = this.safeString (balance['currency'], 'name');
             const code = this.safeCurrencyCode (currencyId);
             const account = this.account ();
-            account['free'] = this.safeFloat (balance, 'available');
-            const blocked = this.safeFloat (balance, 'blocked');
-            const inOrders = this.safeFloat (balance, 'inOrders');
-            const withdrawing = this.safeFloat (balance, 'withdrawing');
+            account['free'] = this.safeNumber (balance, 'available');
+            const blocked = this.safeNumber (balance, 'blocked');
+            const inOrders = this.safeNumber (balance, 'inOrders');
+            const withdrawing = this.safeNumber (balance, 'withdrawing');
             account['used'] = this.sum (blocked, inOrders, withdrawing);
             result[code] = account;
         }
@@ -198,11 +198,11 @@ module.exports = class coingi extends Exchange {
             'symbol': symbol,
             'timestamp': timestamp,
             'datetime': this.iso8601 (timestamp),
-            'high': this.safeFloat (ticker, 'high'),
-            'low': this.safeFloat (ticker, 'low'),
-            'bid': this.safeFloat (ticker, 'highestBid'),
+            'high': this.safeNumber (ticker, 'high'),
+            'low': this.safeNumber (ticker, 'low'),
+            'bid': this.safeNumber (ticker, 'highestBid'),
             'bidVolume': undefined,
-            'ask': this.safeFloat (ticker, 'lowestAsk'),
+            'ask': this.safeNumber (ticker, 'lowestAsk'),
             'askVolume': undefined,
             'vwap': undefined,
             'open': undefined,
@@ -212,8 +212,8 @@ module.exports = class coingi extends Exchange {
             'change': undefined,
             'percentage': undefined,
             'average': undefined,
-            'baseVolume': this.safeFloat (ticker, 'baseVolume'),
-            'quoteVolume': this.safeFloat (ticker, 'counterVolume'),
+            'baseVolume': this.safeNumber (ticker, 'baseVolume'),
+            'quoteVolume': this.safeNumber (ticker, 'counterVolume'),
             'info': ticker,
         };
     }
@@ -233,7 +233,7 @@ module.exports = class coingi extends Exchange {
             }
             result[symbol] = this.parseTicker (ticker, market);
         }
-        return result;
+        return this.filterByArray (result, 'symbol', symbols);
     }
 
     async fetchTicker (symbol, params = {}) {
@@ -246,8 +246,8 @@ module.exports = class coingi extends Exchange {
     }
 
     parseTrade (trade, market = undefined) {
-        const price = this.safeFloat (trade, 'price');
-        const amount = this.safeFloat (trade, 'amount');
+        const price = this.safeNumber (trade, 'price');
+        const amount = this.safeNumber (trade, 'amount');
         let cost = undefined;
         if (price !== undefined) {
             if (amount !== undefined) {
@@ -257,13 +257,7 @@ module.exports = class coingi extends Exchange {
         const timestamp = this.safeInteger (trade, 'timestamp');
         const id = this.safeString (trade, 'id');
         const marketId = this.safeString (trade, 'currencyPair');
-        if (marketId in this.markets_by_id) {
-            market = this.markets_by_id[marketId];
-        }
-        let symbol = undefined;
-        if (market !== undefined) {
-            symbol = market['symbol'];
-        }
+        const symbol = this.safeSymbol (marketId, market);
         return {
             'id': id,
             'info': trade,

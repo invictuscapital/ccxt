@@ -308,23 +308,23 @@ class hbtc extends Exchange {
             $filter = $filters[$j];
             $filterType = $this->safe_string($filter, 'filterType');
             if ($filterType === 'LOT_SIZE') {
-                $amountMin = $this->safe_float($filter, 'minQty');
-                $amountMax = $this->safe_float($filter, 'maxQty');
+                $amountMin = $this->safe_number($filter, 'minQty');
+                $amountMax = $this->safe_number($filter, 'maxQty');
             }
             if ($filterType === 'PRICE_FILTER') {
-                $priceMin = $this->safe_float($filter, 'minPrice');
-                $priceMax = $this->safe_float($filter, 'maxPrice');
+                $priceMin = $this->safe_number($filter, 'minPrice');
+                $priceMax = $this->safe_number($filter, 'maxPrice');
             }
             if ($filterType === 'MIN_NOTIONAL') {
-                $costMin = $this->safe_float($filter, 'minNotional');
+                $costMin = $this->safe_number($filter, 'minNotional');
             }
         }
         if (($costMin === null) && ($amountMin !== null) && ($priceMin !== null)) {
             $costMin = $amountMin * $priceMin;
         }
         $precision = array(
-            'price' => $this->safe_float_2($market, 'quotePrecision', 'quoteAssetPrecision'),
-            'amount' => $this->safe_float($market, 'baseAssetPrecision'),
+            'price' => $this->safe_number_2($market, 'quotePrecision', 'quoteAssetPrecision'),
+            'amount' => $this->safe_number($market, 'baseAssetPrecision'),
         );
         $limits = array(
             'amount' => array(
@@ -562,14 +562,6 @@ class hbtc extends Exchange {
         return $this->parse_ticker($response, $market);
     }
 
-    public function parse_tickers($rawTickers, $symbols = null) {
-        $tickers = array();
-        for ($i = 0; $i < count($rawTickers); $i++) {
-            $tickers[] = $this->parse_ticker($rawTickers[$i]);
-        }
-        return $this->filter_by_array($tickers, 'symbol', $symbols);
-    }
-
     public function fetch_bid_ask($symbol, $params = array ()) {
         $this->load_markets();
         $market = $this->market($symbol);
@@ -721,8 +713,8 @@ class hbtc extends Exchange {
                 $currencyId = $this->safe_string_2($balance, 'asset', 'tokenName');
                 $code = $this->safe_currency_code($currencyId);
                 $account = $this->account();
-                $account['free'] = $this->safe_float($balance, 'free');
-                $account['used'] = $this->safe_float($balance, 'locked');
+                $account['free'] = $this->safe_number($balance, 'free');
+                $account['used'] = $this->safe_number($balance, 'locked');
                 $result[$code] = $account;
             }
         } else {
@@ -732,8 +724,8 @@ class hbtc extends Exchange {
                 $code = $this->safe_currency_code($currencyId);
                 $balance = $response[$currencyId];
                 $account = $this->account();
-                $account['free'] = $this->safe_float($balance, 'availableMargin');
-                $account['total'] = $this->safe_float($balance, 'total');
+                $account['free'] = $this->safe_number($balance, 'availableMargin');
+                $account['total'] = $this->safe_number($balance, 'total');
                 $result[$code] = $account;
             }
         }
@@ -778,11 +770,11 @@ class hbtc extends Exchange {
         //
         return array(
             $this->safe_integer($ohlcv, 0),
-            $this->safe_float($ohlcv, 1),
-            $this->safe_float($ohlcv, 2),
-            $this->safe_float($ohlcv, 3),
-            $this->safe_float($ohlcv, 4),
-            $this->safe_float($ohlcv, 5),
+            $this->safe_number($ohlcv, 1),
+            $this->safe_number($ohlcv, 2),
+            $this->safe_number($ohlcv, 3),
+            $this->safe_number($ohlcv, 4),
+            $this->safe_number($ohlcv, 5),
         );
     }
 
@@ -845,7 +837,7 @@ class hbtc extends Exchange {
                 $method = 'optionGetMyTrades';
             } else {
                 if ($symbol === null) {
-                    throw new ArgumentsRequired($this->id . ' fetchMyTrades requires a `$symbol` argument for ' . $type . ' markets');
+                    throw new ArgumentsRequired($this->id . ' fetchMyTrades() requires a `$symbol` argument for ' . $type . ' markets');
                 }
                 $market = $this->market($symbol);
                 $request['symbol'] = $market['id'];
@@ -1468,8 +1460,8 @@ class hbtc extends Exchange {
         //
         $currencyId = $this->safe_string($item, 'tokenId');
         $code = $this->safe_currency_code($currencyId, $currency);
-        $amount = $this->safe_float($item, 'change');
-        $after = $this->safe_float($item, 'total');
+        $amount = $this->safe_number($item, 'change');
+        $after = $this->safe_number($item, 'total');
         $direction = ($amount < 0) ? 'out' : 'in';
         $before = null;
         if ($after !== null && $amount !== null) {
@@ -1609,8 +1601,8 @@ class hbtc extends Exchange {
         } else {
             $type = 'withdrawal';
         }
-        $amount = $this->safe_float($transaction, 'quantity');
-        $feeCost = $this->safe_float($transaction, 'fee');
+        $amount = $this->safe_number($transaction, 'quantity');
+        $feeCost = $this->safe_number($transaction, 'fee');
         $fee = null;
         if ($feeCost !== null) {
             $feeCurrencyId = $this->safe_string($transaction, 'feeTokenId');
@@ -1668,17 +1660,11 @@ class hbtc extends Exchange {
         //         "askQty" => "9.00000000"
         //     }
         //
-        $symbol = null;
         $marketId = $this->safe_string($ticker, 'symbol');
-        if (is_array($this->markets_by_id) && array_key_exists($marketId, $this->markets_by_id)) {
-            $market = $this->markets_by_id[$marketId];
-        }
-        if ($market !== null) {
-            $symbol = $market['symbol'];
-        }
+        $symbol = $this->safe_symbol($marketId, $market);
         $timestamp = $this->safe_integer($ticker, 'time');
-        $open = $this->safe_float($ticker, 'openPrice');
-        $close = $this->safe_float($ticker, 'lastPrice');
+        $open = $this->safe_number($ticker, 'openPrice');
+        $close = $this->safe_number($ticker, 'lastPrice');
         $change = null;
         $percentage = null;
         $average = null;
@@ -1689,22 +1675,19 @@ class hbtc extends Exchange {
                 $percentage = ($change / $open) * 100;
             }
         }
-        $quoteVolume = $this->safe_float($ticker, 'quoteVolume');
-        $baseVolume = $this->safe_float($ticker, 'volume');
-        $vwap = null;
-        if ($baseVolume !== null && $quoteVolume !== null && $baseVolume > 0) {
-            $vwap = $quoteVolume / $baseVolume;
-        }
+        $quoteVolume = $this->safe_number($ticker, 'quoteVolume');
+        $baseVolume = $this->safe_number($ticker, 'volume');
+        $vwap = $this->vwap($baseVolume, $quoteVolume);
         return array(
             'symbol' => $symbol,
             'timestamp' => $timestamp,
             'datetime' => $this->iso8601($timestamp),
-            'high' => $this->safe_float($ticker, 'highPrice'),
-            'low' => $this->safe_float($ticker, 'lowPrice'),
-            'bid' => $this->safe_float_2($ticker, 'bestBidPrice', 'bidPrice'),
-            'bidVolume' => $this->safe_float($ticker, 'bidQty'),
-            'ask' => $this->safe_float_2($ticker, 'bestAskPrice', 'askPrice'),
-            'askVolume' => $this->safe_float($ticker, 'askQty'),
+            'high' => $this->safe_number($ticker, 'highPrice'),
+            'low' => $this->safe_number($ticker, 'lowPrice'),
+            'bid' => $this->safe_number_2($ticker, 'bestBidPrice', 'bidPrice'),
+            'bidVolume' => $this->safe_number($ticker, 'bidQty'),
+            'ask' => $this->safe_number_2($ticker, 'bestAskPrice', 'askPrice'),
+            'askVolume' => $this->safe_number($ticker, 'askQty'),
             'vwap' => $vwap,
             'open' => $open,
             'close' => $close,
@@ -1754,11 +1737,11 @@ class hbtc extends Exchange {
         //     }
         //
         $id = $this->safe_string($trade, 'id');
-        $timestamp = $this->safe_float($trade, 'time');
+        $timestamp = $this->safe_number($trade, 'time');
         $type = null;
         $orderId = $this->safe_string($trade, 'orderId');
-        $price = $this->safe_float($trade, 'price');
-        $amount = $this->safe_float($trade, 'qty');
+        $price = $this->safe_number($trade, 'price');
+        $amount = $this->safe_number($trade, 'qty');
         $cost = null;
         if ($price !== null) {
             if ($amount !== null) {
@@ -1778,7 +1761,7 @@ class hbtc extends Exchange {
             $side = $isBuyer ? 'buy' : 'sell';
         }
         $fee = null;
-        $feeCost = $this->safe_float($trade, 'commission');
+        $feeCost = $this->safe_number($trade, 'commission');
         if ($feeCost !== null) {
             $feeCurrencyId = $this->safe_string($trade, 'commissionAsset');
             $feeCurrencyCode = $this->safe_currency_code($feeCurrencyId);
@@ -1821,7 +1804,7 @@ class hbtc extends Exchange {
         //         "origQty":"1000",
         //         "executedQty":"0",
         //         "$status":"NEW",
-        //         "timeInForce":"GTC",
+        //         "$timeInForce":"GTC",
         //         "$type":"MARKET",
         //         "$side":"BUY"
         //     }
@@ -1841,10 +1824,10 @@ class hbtc extends Exchange {
         //         "cummulativeQuoteQty":"682.606",
         //         "avgPrice":"6826.06",
         //         "$status":"FILLED",
-        //         "timeInForce":"GTC",
+        //         "$timeInForce":"GTC",
         //         "$type":"MARKET",
         //         "$side":"SELL",
-        //         "stopPrice":"0.0",
+        //         "$stopPrice":"0.0",
         //         "icebergQty":"0.0",
         //         "time":"1588214701974",
         //         "updateTime":"0",
@@ -1868,7 +1851,7 @@ class hbtc extends Exchange {
         //         orderType => "LIMIT",
         //         $side => "SELL_OPEN",
         //         $fees => array(),
-        //         timeInForce => "GTC",
+        //         $timeInForce => "GTC",
         //         $status => "CANCELED",
         //         priceType => "INPUT"
         //     }
@@ -1880,42 +1863,34 @@ class hbtc extends Exchange {
         if ($timestamp === null) {
             $timestamp = $this->safe_integer($order, 'transactTime');
         }
-        $symbol = null;
-        if ($market === null) {
-            $marketId = $this->safe_string($order, 'symbol');
-            if ($marketId !== null) {
-                $marketId = strtoupper($marketId);
-                if (is_array($this->markets_by_id) && array_key_exists($marketId, $this->markets_by_id)) {
-                    $market = $this->markets_by_id[$marketId];
-                }
-            }
-        }
+        $marketId = $this->safe_string($order, 'symbol');
+        $symbol = $this->safe_symbol($marketId, $market);
         $type = $this->safe_string_lower($order, 'type');
         $side = $this->safe_string_lower($order, 'side');
-        $price = $this->safe_float($order, 'price');
-        $average = $this->safe_float($order, 'avgPrice');
+        $price = $this->safe_number($order, 'price');
+        $average = $this->safe_number($order, 'avgPrice');
         $amount = null;
-        $cost = $this->safe_float($order, 'cummulativeQuoteQty');
+        $cost = $this->safe_number($order, 'cummulativeQuoteQty');
         $filled = null;
         $remaining = null;
         if ($type === null) {
             $type = $this->safe_string_lower($order, 'orderType');
             if (($market !== null) && $market['inverse']) {
-                $cost = $this->safe_float($order, 'executedQty');
+                $cost = $this->safe_number($order, 'executedQty');
                 $amount = null;
             }
             if ($cost === 0.0) {
                 $filled = 0;
             }
         } else {
-            $amount = $this->safe_float($order, 'origQty');
+            $amount = $this->safe_number($order, 'origQty');
             if ($type === 'market') {
                 $price = null;
                 if ($side === 'buy') {
                     $amount = null;
                 }
             }
-            $filled = $this->safe_float($order, 'executedQty');
+            $filled = $this->safe_number($order, 'executedQty');
             if ($filled !== null) {
                 if ($amount !== null) {
                     $remaining = $amount - $filled;
@@ -1926,9 +1901,8 @@ class hbtc extends Exchange {
             $average = null;
         }
         $status = $this->parse_order_status($this->safe_string($order, 'status'));
-        if ($market !== null) {
-            $symbol = $market['symbol'];
-        }
+        $timeInForce = $this->safe_string($order, 'timeInForce');
+        $stopPrice = $this->safe_number($order, 'stopPrice');
         $result = array(
             'info' => $order,
             'id' => $id,
@@ -1938,8 +1912,10 @@ class hbtc extends Exchange {
             'lastTradeTimestamp' => null,
             'symbol' => $symbol,
             'type' => $type,
+            'timeInForce' => $timeInForce,
             'side' => $side,
             'price' => $price,
+            'stopPrice' => $stopPrice,
             'average' => $average,
             'cost' => $cost,
             'amount' => $amount,
@@ -1955,7 +1931,7 @@ class hbtc extends Exchange {
         if ($numFees > 0) {
             $result['fees'] = array();
             for ($i = 0; $i < count($fees); $i++) {
-                $feeCost = $this->safe_float($fees[$i], 'fee');
+                $feeCost = $this->safe_number($fees[$i], 'fee');
                 if ($feeCost !== null) {
                     $feeCurrencyId = $this->safe_string($fees[$i], 'feeToken');
                     $feeCurrencyCode = $this->safe_currency_code($feeCurrencyId);
@@ -1974,6 +1950,7 @@ class hbtc extends Exchange {
             'NEW' => 'open',
             'CANCELED' => 'canceled',
             'FILLED' => 'closed',
+            'PARTIALLY_FILLED' => 'open',
             'PENDING_CANCEL' => 'canceled',
         );
         return $this->safe_string($statuses, $status, $status);

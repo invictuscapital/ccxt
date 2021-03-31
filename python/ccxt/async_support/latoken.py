@@ -175,7 +175,7 @@ class latoken(Exchange):
             }
             limits = {
                 'amount': {
-                    'min': self.safe_float(market, 'minQty'),
+                    'min': self.safe_number(market, 'minQty'),
                     'max': None,
                 },
                 'price': {
@@ -223,7 +223,7 @@ class latoken(Exchange):
             numericId = self.safe_integer(currency, 'currencyId')
             code = self.safe_currency_code(id)
             precision = self.safe_integer(currency, 'precission')
-            fee = self.safe_float(currency, 'fee')
+            fee = self.safe_number(currency, 'fee')
             active = None
             result[code] = {
                 'id': id,
@@ -297,13 +297,13 @@ class latoken(Exchange):
             balance = response[i]
             currencyId = self.safe_string(balance, 'symbol')
             code = self.safe_currency_code(currencyId)
-            frozen = self.safe_float(balance, 'frozen')
-            pending = self.safe_float(balance, 'pending')
+            frozen = self.safe_number(balance, 'frozen')
+            pending = self.safe_number(balance, 'pending')
             used = self.sum(frozen, pending)
             account = {
-                'free': self.safe_float(balance, 'available'),
+                'free': self.safe_number(balance, 'available'),
                 'used': used,
-                'total': self.safe_float(balance, 'amount'),
+                'total': self.safe_number(balance, 'amount'),
             }
             result[code] = account
         return self.parse_balance(result)
@@ -346,25 +346,21 @@ class latoken(Exchange):
         #         "priceChange":-0.1500
         #     }
         #
-        symbol = None
         marketId = self.safe_string(ticker, 'symbol')
-        if marketId in self.markets_by_id:
-            market = self.markets_by_id[marketId]
-        if (symbol is None) and (market is not None):
-            symbol = market['symbol']
-        open = self.safe_float(ticker, 'open')
-        close = self.safe_float(ticker, 'close')
+        symbol = self.safe_symbol(marketId, market)
+        open = self.safe_number(ticker, 'open')
+        close = self.safe_number(ticker, 'close')
         change = None
         if open is not None and close is not None:
             change = close - open
-        percentage = self.safe_float(ticker, 'priceChange')
+        percentage = self.safe_number(ticker, 'priceChange')
         timestamp = self.nonce()
         return {
             'symbol': symbol,
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
-            'low': self.safe_float(ticker, 'low'),
-            'high': self.safe_float(ticker, 'high'),
+            'low': self.safe_number(ticker, 'low'),
+            'high': self.safe_number(ticker, 'high'),
             'bid': None,
             'bidVolume': None,
             'ask': None,
@@ -378,7 +374,7 @@ class latoken(Exchange):
             'percentage': percentage,
             'average': None,
             'baseVolume': None,
-            'quoteVolume': self.safe_float(ticker, 'volume'),
+            'quoteVolume': self.safe_number(ticker, 'volume'),
             'info': ticker,
         }
 
@@ -424,9 +420,8 @@ class latoken(Exchange):
         for i in range(0, len(response)):
             ticker = self.parse_ticker(response[i])
             symbol = ticker['symbol']
-            if symbols is None or self.in_array(symbol, symbols):
-                result[symbol] = ticker
-        return result
+            result[symbol] = ticker
+        return self.filter_by_array(result, 'symbol', symbols)
 
     def parse_trade(self, trade, market=None):
         #
@@ -457,8 +452,8 @@ class latoken(Exchange):
             # 03 Jan 2009 - first block
             if timestamp < 1230940800000:
                 timestamp *= 1000
-        price = self.safe_float(trade, 'price')
-        amount = self.safe_float(trade, 'amount')
+        price = self.safe_number(trade, 'price')
+        amount = self.safe_number(trade, 'amount')
         side = self.safe_string(trade, 'side')
         cost = None
         if amount is not None:
@@ -469,7 +464,7 @@ class latoken(Exchange):
             symbol = market['symbol']
         id = self.safe_string(trade, 'id')
         orderId = self.safe_string(trade, 'orderId')
-        feeCost = self.safe_float(trade, 'commission')
+        feeCost = self.safe_number(trade, 'commission')
         fee = None
         if feeCost is not None:
             fee = {
@@ -521,7 +516,7 @@ class latoken(Exchange):
 
     async def fetch_my_trades(self, symbol=None, since=None, limit=None, params={}):
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' fetchMyTrades requires a symbol argument')
+            raise ArgumentsRequired(self.id + ' fetchMyTrades() requires a symbol argument')
         await self.load_markets()
         market = self.market(symbol)
         request = {
@@ -594,31 +589,19 @@ class latoken(Exchange):
         id = self.safe_string(order, 'orderId')
         timestamp = self.safe_timestamp(order, 'timeCreated')
         marketId = self.safe_string(order, 'symbol')
-        symbol = marketId
-        if marketId in self.markets_by_id:
-            market = self.markets_by_id[marketId]
-        if market is not None:
-            symbol = market['symbol']
+        symbol = self.safe_symbol(marketId, market)
         side = self.safe_string(order, 'side')
         type = self.safe_string(order, 'orderType')
-        price = self.safe_float(order, 'price')
-        amount = self.safe_float(order, 'amount')
-        filled = self.safe_float(order, 'executedAmount')
-        remaining = None
-        if amount is not None:
-            if filled is not None:
-                remaining = amount - filled
+        price = self.safe_number(order, 'price')
+        amount = self.safe_number(order, 'amount')
+        filled = self.safe_number(order, 'executedAmount')
         status = self.parse_order_status(self.safe_string(order, 'orderStatus'))
-        cost = None
-        if filled is not None:
-            if price is not None:
-                cost = filled * price
         timeFilled = self.safe_timestamp(order, 'timeFilled')
         lastTradeTimestamp = None
         if (timeFilled is not None) and (timeFilled > 0):
             lastTradeTimestamp = timeFilled
         clientOrderId = self.safe_string(order, 'cliOrdId')
-        return {
+        return self.safe_order({
             'id': id,
             'clientOrderId': clientOrderId,
             'info': order,
@@ -628,16 +611,19 @@ class latoken(Exchange):
             'status': status,
             'symbol': symbol,
             'type': type,
+            'timeInForce': None,
+            'postOnly': None,
             'side': side,
             'price': price,
-            'cost': cost,
+            'stopPrice': None,
+            'cost': None,
             'amount': amount,
             'filled': filled,
             'average': None,
-            'remaining': remaining,
+            'remaining': None,
             'fee': None,
             'trades': None,
-        }
+        })
 
     async def fetch_open_orders(self, symbol=None, since=None, limit=None, params={}):
         return self.fetch_orders_with_method('private_get_order_active', symbol, since, limit, params)
@@ -656,7 +642,7 @@ class latoken(Exchange):
 
     async def fetch_orders_with_method(self, method, symbol=None, since=None, limit=None, params={}):
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' fetchOrdersWithMethod requires a symbol argument')
+            raise ArgumentsRequired(self.id + ' fetchOrdersWithMethod() requires a symbol argument')
         await self.load_markets()
         market = self.market(symbol)
         request = {
@@ -765,7 +751,7 @@ class latoken(Exchange):
 
     async def cancel_all_orders(self, symbol=None, params={}):
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' cancelAllOrders requires a symbol argument')
+            raise ArgumentsRequired(self.id + ' cancelAllOrders() requires a symbol argument')
         await self.load_markets()
         marketId = self.market_id(symbol)
         request = {

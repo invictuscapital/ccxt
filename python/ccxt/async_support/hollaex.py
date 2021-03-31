@@ -202,17 +202,17 @@ class hollaex(Exchange):
                 'quoteId': quoteId,
                 'active': active,
                 'precision': {
-                    'price': self.safe_float(market, 'increment_price'),
-                    'amount': self.safe_float(market, 'increment_size'),
+                    'price': self.safe_number(market, 'increment_price'),
+                    'amount': self.safe_number(market, 'increment_size'),
                 },
                 'limits': {
                     'amount': {
-                        'min': self.safe_float(market, 'min_size'),
-                        'max': self.safe_float(market, 'max_size'),
+                        'min': self.safe_number(market, 'min_size'),
+                        'max': self.safe_number(market, 'max_size'),
                     },
                     'price': {
-                        'min': self.safe_float(market, 'min_price'),
-                        'max': self.safe_float(market, 'max_price'),
+                        'min': self.safe_number(market, 'min_price'),
+                        'max': self.safe_number(market, 'max_price'),
                     },
                     'cost': {'min': None, 'max': None},
                 },
@@ -233,8 +233,8 @@ class hollaex(Exchange):
             code = self.safe_currency_code(id)
             name = self.safe_string(currency, 'fullname')
             active = self.safe_value(currency, 'active')
-            fee = self.safe_float(currency, 'withdrawal_fee')
-            precision = self.safe_float(currency, 'increment_unit')
+            fee = self.safe_number(currency, 'withdrawal_fee')
+            precision = self.safe_number(currency, 'increment_unit')
             withdrawalLimits = self.safe_value(currency, 'withdrawal_limits', [])
             result[code] = {
                 'id': id,
@@ -247,8 +247,8 @@ class hollaex(Exchange):
                 'precision': precision,
                 'limits': {
                     'amount': {
-                        'min': self.safe_float(currency, 'min'),
-                        'max': self.safe_float(currency, 'max'),
+                        'min': self.safe_number(currency, 'min'),
+                        'max': self.safe_number(currency, 'max'),
                     },
                     'price': {
                         'min': None,
@@ -274,15 +274,7 @@ class hollaex(Exchange):
         for i in range(0, len(marketIds)):
             marketId = marketIds[i]
             orderbook = response[marketId]
-            symbol = marketId
-            if marketId in self.markets_by_id:
-                market = self.markets_by_id[marketId]
-                symbol = market['symbol']
-            else:
-                baseId, quoteId = marketId.split('-')
-                base = self.safe_currency_code(baseId)
-                quote = self.safe_currency_code(quoteId)
-                symbol = base + '/' + quote
+            symbol = self.safe_symbol(marketId, None, '-')
             timestamp = self.parse8601(self.safe_string(orderbook, 'timestamp'))
             result[symbol] = self.parse_order_book(response[marketId], timestamp)
         return result
@@ -363,17 +355,9 @@ class hollaex(Exchange):
         for i in range(0, len(keys)):
             key = keys[i]
             ticker = response[key]
-            symbol = key
-            market = None
             marketId = self.safe_string(ticker, 'symbol', key)
-            if marketId in self.markets_by_id:
-                market = self.markets_by_id[marketId]
-                symbol = market['symbol']
-            else:
-                baseId, quoteId = marketId.split('-')
-                base = self.safe_currency_code(baseId)
-                quote = self.safe_currency_code(quoteId)
-                symbol = base + '/' + quote
+            market = self.safe_market(marketId, None, '-')
+            symbol = market['symbol']
             result[symbol] = self.parse_ticker(ticker, market)
         return self.filter_by_array(result, 'symbol', symbols)
 
@@ -404,41 +388,30 @@ class hollaex(Exchange):
         #         "symbol": "bch-usdt"
         #     }
         #
-        symbol = None
         marketId = self.safe_string(ticker, 'symbol')
-        if marketId is not None:
-            if marketId in self.markets_by_id:
-                market = self.markets_by_id[marketId]
-                symbol = market['symbol']
-            else:
-                baseId, quoteId = marketId.split('-')
-                base = self.safe_currency_code(baseId)
-                quote = self.safe_currency_code(quoteId)
-                symbol = base + '/' + quote
-        if (symbol is None) and (market is not None):
-            symbol = market['symbol']
+        symbol = self.safe_symbol(marketId, market, '-')
         timestamp = self.parse8601(self.safe_string_2(ticker, 'time', 'timestamp'))
-        close = self.safe_float(ticker, 'close')
+        close = self.safe_number(ticker, 'close')
         result = {
             'symbol': symbol,
             'info': ticker,
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
-            'high': self.safe_float(ticker, 'high'),
-            'low': self.safe_float(ticker, 'low'),
+            'high': self.safe_number(ticker, 'high'),
+            'low': self.safe_number(ticker, 'low'),
             'bid': None,
             'bidVolume': None,
             'ask': None,
             'askVolume': None,
             'vwap': None,
-            'open': self.safe_float(ticker, 'open'),
+            'open': self.safe_number(ticker, 'open'),
             'close': close,
-            'last': self.safe_float(ticker, 'last', close),
+            'last': self.safe_number(ticker, 'last', close),
             'previousClose': None,
             'change': None,
             'percentage': None,
             'average': None,
-            'baseVolume': self.safe_float(ticker, 'volume'),
+            'baseVolume': self.safe_number(ticker, 'volume'),
             'quoteVolume': None,
         }
         return result
@@ -488,38 +461,28 @@ class hollaex(Exchange):
         #         "fee": 0.1
         #     }
         #
-        symbol = None
         marketId = self.safe_string(trade, 'symbol')
-        quote = None
-        if marketId is not None:
-            if marketId in self.markets_by_id:
-                market = self.markets_by_id[marketId]
-                symbol = market['symbol']
-            else:
-                baseId, quoteId = marketId.split('-')
-                base = self.safe_currency_code(baseId)
-                quote = self.safe_currency_code(quoteId)
-                symbol = base + '/' + quote
-        if (symbol is None) and (market is not None):
-            symbol = market['symbol']
+        market = self.safe_market(marketId, market, '-')
+        symbol = market['symbol']
         datetime = self.safe_string(trade, 'timestamp')
         timestamp = self.parse8601(datetime)
         side = self.safe_string(trade, 'side')
-        price = self.safe_float(trade, 'price')
-        amount = self.safe_float(trade, 'size')
+        price = self.safe_number(trade, 'price')
+        amount = self.safe_number(trade, 'size')
         cost = None
         if price is not None:
             if amount is not None:
                 cost = price * amount
-        feeCost = self.safe_float(trade, 'fee')
+        feeCost = self.safe_number(trade, 'fee')
         fee = None
         if feeCost is not None:
+            quote = market['quote']
             feeCurrencyCode = market['quote'] if (market is not None) else quote
             fee = {
                 'cost': feeCost,
                 'currency': feeCurrencyCode,
             }
-        result = {
+        return {
             'info': trade,
             'id': None,
             'timestamp': timestamp,
@@ -534,7 +497,6 @@ class hollaex(Exchange):
             'cost': cost,
             'fee': fee,
         }
-        return result
 
     async def fetch_ohlcv(self, symbol, timeframe='1h', since=None, limit=None, params={}):
         await self.load_markets()
@@ -546,7 +508,7 @@ class hollaex(Exchange):
         duration = self.parse_timeframe(timeframe)
         if since is None:
             if limit is None:
-                raise ArgumentsRequired(self.id + " fetchOHLCV requires a 'since' or a 'limit' argument")
+                raise ArgumentsRequired(self.id + " fetchOHLCV() requires a 'since' or a 'limit' argument")
             else:
                 end = self.seconds()
                 start = end - duration * limit
@@ -590,11 +552,11 @@ class hollaex(Exchange):
         #
         return [
             self.parse8601(self.safe_string(response, 'time')),
-            self.safe_float(response, 'open'),
-            self.safe_float(response, 'high'),
-            self.safe_float(response, 'low'),
-            self.safe_float(response, 'close'),
-            self.safe_float(response, 'volume'),
+            self.safe_number(response, 'open'),
+            self.safe_number(response, 'high'),
+            self.safe_number(response, 'low'),
+            self.safe_number(response, 'close'),
+            self.safe_number(response, 'volume'),
         ]
 
     async def fetch_balance(self, params={}):
@@ -618,8 +580,8 @@ class hollaex(Exchange):
             currencyId = currencyIds[i]
             code = self.safe_currency_code(currencyId)
             account = self.account()
-            account['free'] = self.safe_float(response, currencyId + '_available')
-            account['total'] = self.safe_float(response, currencyId + '_balance')
+            account['free'] = self.safe_number(response, currencyId + '_available')
+            account['total'] = self.safe_number(response, currencyId + '_balance')
             result[code] = account
         return self.parse_balance(result)
 
@@ -688,35 +650,17 @@ class hollaex(Exchange):
         #         "filled":0
         #     }
         #
-        symbol = None
         marketId = self.safe_string(order, 'symbol')
-        if marketId is not None:
-            if marketId in self.markets_by_id:
-                market = self.markets_by_id[marketId]
-                symbol = market['symbol']
-            else:
-                baseId, quoteId = marketId.split('-')
-                base = self.safe_currency_code(baseId)
-                quote = self.safe_currency_code(quoteId)
-                symbol = base + '/' + quote
-        if (symbol is None) and (market is not None):
-            symbol = market['symbol']
+        symbol = self.safe_symbol(marketId, market, '-')
         id = self.safe_string(order, 'id')
         timestamp = self.parse8601(self.safe_string(order, 'created_at'))
         type = self.safe_string(order, 'type')
         side = self.safe_string(order, 'side')
-        price = self.safe_float(order, 'price')
-        amount = self.safe_float(order, 'size')
-        filled = self.safe_float(order, 'filled')
-        cost = None
-        remaining = None
-        if filled is not None:
-            if amount is not None:
-                remaining = amount - filled
-            if price is not None:
-                cost = filled * price
+        price = self.safe_number(order, 'price')
+        amount = self.safe_number(order, 'size')
+        filled = self.safe_number(order, 'filled')
         status = 'closed' if (type == 'market') else 'open'
-        result = {
+        return self.safe_order({
             'id': id,
             'clientOrderId': None,
             'timestamp': timestamp,
@@ -725,18 +669,20 @@ class hollaex(Exchange):
             'status': status,
             'symbol': symbol,
             'type': type,
+            'timeInForce': None,
+            'postOnly': None,
             'side': side,
             'price': price,
+            'stopPrice': None,
             'amount': amount,
             'filled': filled,
-            'remaining': remaining,
-            'cost': cost,
+            'remaining': None,
+            'cost': None,
             'trades': None,
             'fee': None,
             'info': order,
             'average': None,
-        }
-        return result
+        })
 
     async def create_order(self, symbol, type, side, amount, price=None, params={}):
         await self.load_markets()
@@ -1044,7 +990,7 @@ class hollaex(Exchange):
         timestamp = self.parse8601(self.safe_string(transaction, 'created_at'))
         updated = self.parse8601(self.safe_string(transaction, 'updated_at'))
         type = self.safe_string(transaction, 'type')
-        amount = self.safe_float(transaction, 'amount')
+        amount = self.safe_number(transaction, 'amount')
         address = self.safe_string(transaction, 'address')
         addressTo = None
         addressFrom = None
@@ -1072,7 +1018,7 @@ class hollaex(Exchange):
             status = 'pending'
         fee = {
             'currency': code,
-            'cost': self.safe_float(transaction, 'fee'),
+            'cost': self.safe_number(transaction, 'fee'),
         }
         return {
             'info': transaction,

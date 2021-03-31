@@ -4,7 +4,6 @@
 # https://github.com/ccxt/ccxt/blob/master/CONTRIBUTING.md#how-to-contribute-code
 
 from ccxt.base.exchange import Exchange
-import base64
 import math
 from ccxt.base.errors import ExchangeError
 from ccxt.base.errors import AuthenticationError
@@ -19,6 +18,7 @@ from ccxt.base.errors import DDoSProtection
 from ccxt.base.errors import RateLimitExceeded
 from ccxt.base.errors import ExchangeNotAvailable
 from ccxt.base.decimal_to_precision import TRUNCATE
+from ccxt.base.decimal_to_precision import TICK_SIZE
 
 
 class probit(Exchange):
@@ -135,6 +135,7 @@ class probit(Exchange):
                     'RATE_LIMIT_EXCEEDED': RateLimitExceeded,  # You are sending requests too frequently. Please try it later.
                     'MARKET_UNAVAILABLE': ExchangeNotAvailable,  # Market is closed today
                     'INVALID_MARKET': BadSymbol,  # Requested market is not exist
+                    'MARKET_CLOSED': BadSymbol,  # {"errorCode":"MARKET_CLOSED"}
                     'INVALID_CURRENCY': BadRequest,  # Requested currency is not exist on ProBit system
                     'TOO_MANY_OPEN_ORDERS': DDoSProtection,  # Too many open orders
                     'DUPLICATE_ADDRESS': InvalidAddress,  # Address already exists in withdrawal address list
@@ -144,6 +145,7 @@ class probit(Exchange):
                 'apiKey': True,
                 'secret': True,
             },
+            'precisionMode': TICK_SIZE,
             'options': {
                 'createMarketBuyOrderRequiresPrice': True,
                 'timeInForce': {
@@ -154,6 +156,9 @@ class probit(Exchange):
             'commonCurrencies': {
                 'BTCBEAR': 'BEAR',
                 'BTCBULL': 'BULL',
+                'CBC': 'CryptoBharatCoin',
+                'HBC': 'Hybrid Bank Cash',
+                'UNI': 'UNICORN Token',
             },
         })
 
@@ -195,14 +200,15 @@ class probit(Exchange):
             symbol = base + '/' + quote
             closed = self.safe_value(market, 'closed', False)
             active = not closed
-            priceIncrement = self.safe_string(market, 'price_increment')
+            amountPrecision = self.safe_integer(market, 'quantity_precision')
+            costPrecision = self.safe_integer(market, 'cost_precision')
             precision = {
-                'amount': self.safe_integer(market, 'quantity_precision'),
-                'price': self.precision_from_string(priceIncrement),
-                'cost': self.safe_integer(market, 'cost_precision'),
+                'amount': 1 / math.pow(10, amountPrecision),
+                'price': self.safe_number(market, 'price_increment'),
+                'cost': 1 / math.pow(10, costPrecision),
             }
-            takerFeeRate = self.safe_float(market, 'taker_fee_rate')
-            makerFeeRate = self.safe_float(market, 'maker_fee_rate')
+            takerFeeRate = self.safe_number(market, 'taker_fee_rate')
+            makerFeeRate = self.safe_number(market, 'maker_fee_rate')
             result.append({
                 'id': id,
                 'info': market,
@@ -217,16 +223,16 @@ class probit(Exchange):
                 'maker': makerFeeRate / 100,
                 'limits': {
                     'amount': {
-                        'min': self.safe_float(market, 'min_quantity'),
-                        'max': self.safe_float(market, 'max_quantity'),
+                        'min': self.safe_number(market, 'min_quantity'),
+                        'max': self.safe_number(market, 'max_quantity'),
                     },
                     'price': {
-                        'min': self.safe_float(market, 'min_price'),
-                        'max': self.safe_float(market, 'max_price'),
+                        'min': self.safe_number(market, 'min_price'),
+                        'max': self.safe_number(market, 'max_price'),
                     },
                     'cost': {
-                        'min': self.safe_float(market, 'min_cost'),
-                        'max': self.safe_float(market, 'max_cost'),
+                        'min': self.safe_number(market, 'min_cost'),
+                        'max': self.safe_number(market, 'max_cost'),
                     },
                 },
             })
@@ -306,9 +312,18 @@ class probit(Exchange):
             withdrawalSuspended = self.safe_value(platform, 'withdrawal_suspended')
             active = not (depositSuspended and withdrawalSuspended)
             withdrawalFees = self.safe_value(platform, 'withdrawal_fee', {})
-            withdrawalFeesByPriority = self.sort_by(withdrawalFees, 'priority')
+            fees = []
+            # sometimes the withdrawal fee is an empty object
+            # [{'amount': '0.015', 'priority': 1, 'currency_id': 'ETH'}, {}]
+            for j in range(0, len(withdrawalFees)):
+                withdrawalFee = withdrawalFees[j]
+                amount = self.safe_number(withdrawalFee, 'amount')
+                priority = self.safe_integer(withdrawalFee, 'priority')
+                if (amount is not None) and (priority is not None):
+                    fees.append(withdrawalFee)
+            withdrawalFeesByPriority = self.sort_by(fees, 'priority')
             withdrawalFee = self.safe_value(withdrawalFeesByPriority, 0, {})
-            fee = self.safe_float(withdrawalFee, 'amount')
+            fee = self.safe_number(withdrawalFee, 'amount')
             result[code] = {
                 'id': id,
                 'code': code,
@@ -331,11 +346,11 @@ class probit(Exchange):
                         'max': None,
                     },
                     'deposit': {
-                        'min': self.safe_float(platform, 'min_deposit_amount'),
+                        'min': self.safe_number(platform, 'min_deposit_amount'),
                         'max': None,
                     },
                     'withdraw': {
-                        'min': self.safe_float(platform, 'min_withdrawal_amount'),
+                        'min': self.safe_number(platform, 'min_withdrawal_amount'),
                         'max': None,
                     },
                 },
@@ -363,8 +378,8 @@ class probit(Exchange):
             currencyId = self.safe_string(balance, 'currency_id')
             code = self.safe_currency_code(currencyId)
             account = self.account()
-            account['total'] = self.safe_float(balance, 'total')
-            account['free'] = self.safe_float(balance, 'available')
+            account['total'] = self.safe_number(balance, 'total')
+            account['free'] = self.safe_number(balance, 'available')
             result[code] = account
         return self.parse_balance(result)
 
@@ -414,12 +429,6 @@ class probit(Exchange):
         data = self.safe_value(response, 'data', [])
         return self.parse_tickers(data, symbols)
 
-    def parse_tickers(self, rawTickers, symbols=None):
-        tickers = []
-        for i in range(0, len(rawTickers)):
-            tickers.append(self.parse_ticker(rawTickers[i]))
-        return self.filter_by_array(tickers, 'symbol', symbols)
-
     def fetch_ticker(self, symbol, params={}):
         self.load_markets()
         market = self.market(symbol)
@@ -463,37 +472,25 @@ class probit(Exchange):
         #     }
         #
         timestamp = self.parse8601(self.safe_string(ticker, 'time'))
-        symbol = None
         marketId = self.safe_string(ticker, 'market_id')
-        if marketId is not None:
-            if marketId in self.markets_by_id:
-                market = self.markets_by_id[marketId]
-            else:
-                baseId, quoteId = marketId.split('-')
-                base = self.safe_currency_code(baseId)
-                quote = self.safe_currency_code(quoteId)
-                symbol = base + '/' + quote
-        if (symbol is None) and (market is not None):
-            symbol = market['symbol']
-        close = self.safe_float(ticker, 'last')
-        change = self.safe_float(ticker, 'change')
+        symbol = self.safe_symbol(marketId, market, '-')
+        close = self.safe_number(ticker, 'last')
+        change = self.safe_number(ticker, 'change')
         percentage = None
         open = None
         if change is not None:
             if close is not None:
                 open = close - change
                 percentage = (change / open) * 100
-        baseVolume = self.safe_float(ticker, 'base_volume')
-        quoteVolume = self.safe_float(ticker, 'quote_volume')
-        vwap = None
-        if (baseVolume is not None) and (quoteVolume is not None):
-            vwap = baseVolume / quoteVolume
+        baseVolume = self.safe_number(ticker, 'base_volume')
+        quoteVolume = self.safe_number(ticker, 'quote_volume')
+        vwap = self.vwap(baseVolume, quoteVolume)
         return {
             'symbol': symbol,
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
-            'high': self.safe_float(ticker, 'high'),
-            'low': self.safe_float(ticker, 'low'),
+            'high': self.safe_number(ticker, 'high'),
+            'low': self.safe_number(ticker, 'low'),
             'bid': None,
             'bidVolume': None,
             'ask': None,
@@ -618,32 +615,22 @@ class probit(Exchange):
         #     }
         #
         timestamp = self.parse8601(self.safe_string(trade, 'time'))
-        symbol = None
         id = self.safe_string(trade, 'id')
+        marketId = None
         if id is not None:
             parts = id.split(':')
             marketId = self.safe_string(parts, 0)
-            if marketId is None:
-                marketId = self.safe_string(trade, 'market_id')
-            if marketId is not None:
-                if marketId in self.markets_by_id:
-                    market = self.markets_by_id[marketId]
-                else:
-                    baseId, quoteId = marketId.split('-')
-                    base = self.safe_currency_code(baseId)
-                    quote = self.safe_currency_code(quoteId)
-                    symbol = base + '/' + quote
-        if (symbol is None) and (market is not None):
-            symbol = market['symbol']
+        marketId = self.safe_string(trade, 'market_id', marketId)
+        symbol = self.safe_symbol(marketId, market, '-')
         side = self.safe_string(trade, 'side')
-        price = self.safe_float(trade, 'price')
-        amount = self.safe_float(trade, 'quantity')
+        price = self.safe_number(trade, 'price')
+        amount = self.safe_number(trade, 'quantity')
         cost = None
         if price is not None:
             if amount is not None:
                 cost = price * amount
         orderId = self.safe_string(trade, 'order_id')
-        feeCost = self.safe_float(trade, 'fee_amount')
+        feeCost = self.safe_number(trade, 'fee_amount')
         fee = None
         if feeCost is not None:
             feeCurrencyId = self.safe_string(trade, 'fee_currency_id')
@@ -701,8 +688,7 @@ class probit(Exchange):
             return self.iso8601(previousSunday * 1000)
         else:
             timestamp = int(timestamp / 1000)
-            difference = self.integer_modulo(timestamp, duration)
-            timestamp -= difference
+            timestamp = duration * int(timestamp / duration)
             if after:
                 timestamp = self.sum(timestamp, duration)
             return self.iso8601(timestamp * 1000)
@@ -726,7 +712,7 @@ class probit(Exchange):
         endTime = now
         if since is None:
             if limit is None:
-                raise ArgumentsRequired(self.id + ' fetchOHLCV requires either a since argument or a limit argument')
+                raise ArgumentsRequired(self.id + ' fetchOHLCV() requires either a since argument or a limit argument')
             else:
                 startTime = now - limit * duration * 1000
         else:
@@ -775,11 +761,11 @@ class probit(Exchange):
         #
         return [
             self.parse8601(self.safe_string(ohlcv, 'start_time')),
-            self.safe_float(ohlcv, 'open'),
-            self.safe_float(ohlcv, 'high'),
-            self.safe_float(ohlcv, 'low'),
-            self.safe_float(ohlcv, 'close'),
-            self.safe_float(ohlcv, 'base_volume'),
+            self.safe_number(ohlcv, 'open'),
+            self.safe_number(ohlcv, 'high'),
+            self.safe_number(ohlcv, 'low'),
+            self.safe_number(ohlcv, 'close'),
+            self.safe_number(ohlcv, 'base_volume'),
         ]
 
     def fetch_open_orders(self, symbol=None, since=None, limit=None, params={}):
@@ -815,7 +801,7 @@ class probit(Exchange):
 
     def fetch_order(self, id, symbol=None, params={}):
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' fetchOrder requires a symbol argument')
+            raise ArgumentsRequired(self.id + ' fetchOrder() requires a symbol argument')
         self.load_markets()
         market = self.market(symbol)
         request = {
@@ -864,41 +850,24 @@ class probit(Exchange):
         id = self.safe_string(order, 'id')
         type = self.safe_string(order, 'type')
         side = self.safe_string(order, 'side')
-        symbol = None
         marketId = self.safe_string(order, 'market_id')
-        if marketId is not None:
-            if marketId in self.markets_by_id:
-                market = self.markets_by_id[marketId]
-            else:
-                baseId, quoteId = marketId.split('-')
-                base = self.safe_currency_code(baseId)
-                quote = self.safe_currency_code(quoteId)
-                symbol = base + '/' + quote
-        if (symbol is None) and (market is not None):
-            symbol = market['symbol']
+        symbol = self.safe_symbol(marketId, market, '-')
         timestamp = self.parse8601(self.safe_string(order, 'time'))
-        price = self.safe_float(order, 'limit_price')
-        filled = self.safe_float(order, 'filled_quantity')
-        remaining = self.safe_float(order, 'open_quantity')
-        canceledAmount = self.safe_float(order, 'cancelled_quantity')
+        price = self.safe_number(order, 'limit_price')
+        filled = self.safe_number(order, 'filled_quantity')
+        remaining = self.safe_number(order, 'open_quantity')
+        canceledAmount = self.safe_number(order, 'cancelled_quantity')
         if canceledAmount is not None:
             remaining = self.sum(remaining, canceledAmount)
-        amount = self.safe_float(order, 'quantity', self.sum(filled, remaining))
-        cost = self.safe_float_2(order, 'filled_cost', 'cost')
+        amount = self.safe_number(order, 'quantity', self.sum(filled, remaining))
+        cost = self.safe_number_2(order, 'filled_cost', 'cost')
         if type == 'market':
             price = None
-        average = None
-        if filled is not None:
-            if cost is None:
-                if price is not None:
-                    cost = price * filled
-            if cost is not None:
-                if filled > 0:
-                    average = cost / filled
         clientOrderId = self.safe_string(order, 'client_order_id')
         if clientOrderId == '':
             clientOrderId = None
-        return {
+        timeInForce = self.safe_string_upper(order, 'time_in_force')
+        return self.safe_order({
             'id': id,
             'info': order,
             'clientOrderId': clientOrderId,
@@ -907,17 +876,19 @@ class probit(Exchange):
             'lastTradeTimestamp': None,
             'symbol': symbol,
             'type': type,
+            'timeInForce': timeInForce,
             'side': side,
             'status': status,
             'price': price,
+            'stopPrice': None,
             'amount': amount,
             'filled': filled,
             'remaining': remaining,
-            'average': average,
+            'average': None,
             'cost': cost,
             'fee': None,
             'trades': None,
-        }
+        })
 
     def cost_to_precision(self, symbol, cost):
         return self.decimal_to_precision(cost, TRUNCATE, self.markets[symbol]['precision']['cost'], self.precisionMode)
@@ -944,7 +915,7 @@ class probit(Exchange):
         elif type == 'market':
             # for market buy it requires the amount of quote currency to spend
             if side == 'buy':
-                cost = self.safe_float(params, 'cost')
+                cost = self.safe_number(params, 'cost')
                 createMarketBuyOrderRequiresPrice = self.safe_value(self.options, 'createMarketBuyOrderRequiresPrice', True)
                 if createMarketBuyOrderRequiresPrice:
                     if price is not None:
@@ -993,7 +964,7 @@ class probit(Exchange):
 
     def cancel_order(self, id, symbol=None, params={}):
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' cancelOrder requires a symbol argument')
+            raise ArgumentsRequired(self.id + ' cancelOrder() requires a symbol argument')
         self.load_markets()
         market = self.market(symbol)
         request = {
@@ -1054,14 +1025,6 @@ class probit(Exchange):
         data = self.safe_value(response, 'data', [])
         return self.parse_deposit_addresses(data)
 
-    def parse_deposit_addresses(self, addresses):
-        result = {}
-        for i in range(0, len(addresses)):
-            address = self.parse_deposit_address(addresses[i])
-            code = address['currency']
-            result[code] = address
-        return result
-
     def withdraw(self, code, amount, address, tag=None, params={}):
         # In order to use self method
         # you need to allow API withdrawal from the API Settings Page, and
@@ -1090,7 +1053,7 @@ class probit(Exchange):
 
     def parse_transaction(self, transaction, currency=None):
         id = self.safe_string(transaction, 'id')
-        amount = self.safe_float(transaction, 'amount')
+        amount = self.safe_number(transaction, 'amount')
         address = self.safe_string(transaction, 'address')
         tag = self.safe_string(transaction, 'destination_tag')
         txid = self.safe_string(transaction, 'hash')
@@ -1099,7 +1062,7 @@ class probit(Exchange):
         currencyId = self.safe_string(transaction, 'currency_id')
         code = self.safe_currency_code(currencyId)
         status = self.parse_transaction_status(self.safe_string(transaction, 'status'))
-        feeCost = self.safe_float(transaction, 'fee')
+        feeCost = self.safe_number(transaction, 'fee')
         fee = None
         if feeCost is not None and feeCost != 0:
             fee = {
@@ -1148,7 +1111,7 @@ class probit(Exchange):
             self.check_required_credentials()
             url += self.implode_params(path, params)
             auth = self.apiKey + ':' + self.secret
-            auth64 = base64.b64encode(self.encode(auth))
+            auth64 = self.string_to_base64(auth)
             headers = {
                 'Authorization': 'Basic ' + self.decode(auth64),
                 'Content-Type': 'application/json',
@@ -1166,7 +1129,7 @@ class probit(Exchange):
                 self.check_required_credentials()
                 expires = self.safe_integer(self.options, 'expires')
                 if (expires is None) or (expires < now):
-                    raise AuthenticationError(self.id + ' accessToken expired, call signIn() method')
+                    raise AuthenticationError(self.id + ' access token expired, call signIn() method')
                 accessToken = self.safe_string(self.options, 'accessToken')
                 headers = {
                     'Authorization': 'Bearer ' + accessToken,

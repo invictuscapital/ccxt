@@ -112,7 +112,7 @@ module.exports = class lakebtc extends Exchange {
             const currencyId = currencyIds[i];
             const code = this.safeCurrencyCode (currencyId);
             const account = this.account ();
-            account['total'] = this.safeFloat (balances, currencyId);
+            account['total'] = this.safeNumber (balances, currencyId);
             result[code] = account;
         }
         return this.parseBalance (result);
@@ -133,16 +133,16 @@ module.exports = class lakebtc extends Exchange {
         if (market !== undefined) {
             symbol = market['symbol'];
         }
-        const last = this.safeFloat (ticker, 'last');
+        const last = this.safeNumber (ticker, 'last');
         return {
             'symbol': symbol,
             'timestamp': timestamp,
             'datetime': this.iso8601 (timestamp),
-            'high': this.safeFloat (ticker, 'high'),
-            'low': this.safeFloat (ticker, 'low'),
-            'bid': this.safeFloat (ticker, 'bid'),
+            'high': this.safeNumber (ticker, 'high'),
+            'low': this.safeNumber (ticker, 'low'),
+            'bid': this.safeNumber (ticker, 'bid'),
             'bidVolume': undefined,
-            'ask': this.safeFloat (ticker, 'ask'),
+            'ask': this.safeNumber (ticker, 'ask'),
             'askVolume': undefined,
             'vwap': undefined,
             'open': undefined,
@@ -152,7 +152,7 @@ module.exports = class lakebtc extends Exchange {
             'change': undefined,
             'percentage': undefined,
             'average': undefined,
-            'baseVolume': this.safeFloat (ticker, 'volume'),
+            'baseVolume': this.safeNumber (ticker, 'volume'),
             'quoteVolume': undefined,
             'info': ticker,
         };
@@ -164,16 +164,13 @@ module.exports = class lakebtc extends Exchange {
         const ids = Object.keys (response);
         const result = {};
         for (let i = 0; i < ids.length; i++) {
-            let symbol = ids[i];
-            const ticker = response[symbol];
-            let market = undefined;
-            if (symbol in this.markets_by_id) {
-                market = this.markets_by_id[symbol];
-                symbol = market['symbol'];
-            }
+            const marketId = ids[i];
+            const ticker = response[marketId];
+            const market = this.safeMarket (marketId);
+            const symbol = market['symbol'];
             result[symbol] = this.parseTicker (ticker, market);
         }
-        return result;
+        return this.filterByArray (result, 'symbol', symbols);
     }
 
     async fetchTicker (symbol, params = {}) {
@@ -186,8 +183,8 @@ module.exports = class lakebtc extends Exchange {
     parseTrade (trade, market = undefined) {
         const timestamp = this.safeTimestamp (trade, 'date');
         const id = this.safeString (trade, 'tid');
-        const price = this.safeFloat (trade, 'price');
-        const amount = this.safeFloat (trade, 'amount');
+        const price = this.safeNumber (trade, 'price');
+        const amount = this.safeNumber (trade, 'amount');
         let cost = undefined;
         if (price !== undefined) {
             if (amount !== undefined) {
@@ -301,7 +298,7 @@ module.exports = class lakebtc extends Exchange {
             ];
             query = query.join ('&');
             const signature = this.hmac (this.encode (query), this.encode (this.secret), 'sha1');
-            const auth = this.encode (this.apiKey + ':' + signature);
+            const auth = this.apiKey + ':' + signature;
             const signature64 = this.decode (this.stringToBase64 (auth));
             headers = {
                 'Json-Rpc-Tonce': nonceAsString,

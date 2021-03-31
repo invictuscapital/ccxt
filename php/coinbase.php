@@ -126,23 +126,31 @@ class coinbase extends Exchange {
                 ),
             ),
             'exceptions' => array(
-                'two_factor_required' => '\\ccxt\\AuthenticationError', // 402 When sending money over 2fa limit
-                'param_required' => '\\ccxt\\ExchangeError', // 400 Missing parameter
-                'validation_error' => '\\ccxt\\ExchangeError', // 400 Unable to validate POST/PUT
-                'invalid_request' => '\\ccxt\\ExchangeError', // 400 Invalid request
-                'personal_details_required' => '\\ccxt\\AuthenticationError', // 400 User’s personal detail required to complete this request
-                'identity_verification_required' => '\\ccxt\\AuthenticationError', // 400 Identity verification is required to complete this request
-                'jumio_verification_required' => '\\ccxt\\AuthenticationError', // 400 Document verification is required to complete this request
-                'jumio_face_match_verification_required' => '\\ccxt\\AuthenticationError', // 400 Document verification including face match is required to complete this request
-                'unverified_email' => '\\ccxt\\AuthenticationError', // 400 User has not verified their email
-                'authentication_error' => '\\ccxt\\AuthenticationError', // 401 Invalid auth (generic)
-                'invalid_token' => '\\ccxt\\AuthenticationError', // 401 Invalid Oauth token
-                'revoked_token' => '\\ccxt\\AuthenticationError', // 401 Revoked Oauth token
-                'expired_token' => '\\ccxt\\AuthenticationError', // 401 Expired Oauth token
-                'invalid_scope' => '\\ccxt\\AuthenticationError', // 403 User hasn’t authenticated necessary scope
-                'not_found' => '\\ccxt\\ExchangeError', // 404 Resource not found
-                'rate_limit_exceeded' => '\\ccxt\\RateLimitExceeded', // 429 Rate limit exceeded
-                'internal_server_error' => '\\ccxt\\ExchangeError', // 500 Internal server error
+                'exact' => array(
+                    'two_factor_required' => '\\ccxt\\AuthenticationError', // 402 When sending money over 2fa limit
+                    'param_required' => '\\ccxt\\ExchangeError', // 400 Missing parameter
+                    'validation_error' => '\\ccxt\\ExchangeError', // 400 Unable to validate POST/PUT
+                    'invalid_request' => '\\ccxt\\ExchangeError', // 400 Invalid request
+                    'personal_details_required' => '\\ccxt\\AuthenticationError', // 400 User’s personal detail required to complete this request
+                    'identity_verification_required' => '\\ccxt\\AuthenticationError', // 400 Identity verification is required to complete this request
+                    'jumio_verification_required' => '\\ccxt\\AuthenticationError', // 400 Document verification is required to complete this request
+                    'jumio_face_match_verification_required' => '\\ccxt\\AuthenticationError', // 400 Document verification including face match is required to complete this request
+                    'unverified_email' => '\\ccxt\\AuthenticationError', // 400 User has not verified their email
+                    'authentication_error' => '\\ccxt\\AuthenticationError', // 401 Invalid auth (generic)
+                    'invalid_token' => '\\ccxt\\AuthenticationError', // 401 Invalid Oauth token
+                    'revoked_token' => '\\ccxt\\AuthenticationError', // 401 Revoked Oauth token
+                    'expired_token' => '\\ccxt\\AuthenticationError', // 401 Expired Oauth token
+                    'invalid_scope' => '\\ccxt\\AuthenticationError', // 403 User hasn’t authenticated necessary scope
+                    'not_found' => '\\ccxt\\ExchangeError', // 404 Resource not found
+                    'rate_limit_exceeded' => '\\ccxt\\RateLimitExceeded', // 429 Rate limit exceeded
+                    'internal_server_error' => '\\ccxt\\ExchangeError', // 500 Internal server error
+                ),
+                'broad' => array(
+                    'request timestamp expired' => '\\ccxt\\InvalidNonce', // array("errors":[array("id":"authentication_error","message":"request timestamp expired")])
+                ),
+            ),
+            'commonCurrencies' => array(
+                'CGLD' => 'CELO',
             ),
             'options' => array(
                 'fetchCurrencies' => array(
@@ -172,7 +180,11 @@ class coinbase extends Exchange {
     }
 
     public function fetch_accounts($params = array ()) {
-        $response = $this->privateGetAccounts ($params);
+        $this->load_markets();
+        $request = array(
+            'limit' => 100,
+        );
+        $response = $this->privateGetAccounts (array_merge($request, $params));
         //
         //     {
         //         "id" => "XLM",
@@ -402,10 +414,10 @@ class coinbase extends Exchange {
         $timestamp = $this->parse8601($this->safe_value($transaction, 'created_at'));
         $updated = $this->parse8601($this->safe_value($transaction, 'updated_at'));
         $type = $this->safe_string($transaction, 'resource');
-        $amount = $this->safe_float($subtotalObject, 'amount');
+        $amount = $this->safe_number($subtotalObject, 'amount');
         $currencyId = $this->safe_string($subtotalObject, 'currency');
         $currency = $this->safe_currency_code($currencyId);
-        $feeCost = $this->safe_float($feeObject, 'amount');
+        $feeCost = $this->safe_number($feeObject, 'amount');
         $feeCurrencyId = $this->safe_string($feeObject, 'currency');
         $feeCurrency = $this->safe_currency_code($feeCurrencyId);
         $fee = array(
@@ -481,15 +493,15 @@ class coinbase extends Exchange {
         $orderId = null;
         $side = $this->safe_string($trade, 'resource');
         $type = null;
-        $cost = $this->safe_float($subtotalObject, 'amount');
-        $amount = $this->safe_float($amountObject, 'amount');
+        $cost = $this->safe_number($subtotalObject, 'amount');
+        $amount = $this->safe_number($amountObject, 'amount');
         $price = null;
         if ($cost !== null) {
             if (($amount !== null) && ($amount > 0)) {
                 $price = $cost / $amount;
             }
         }
-        $feeCost = $this->safe_float($feeObject, 'amount');
+        $feeCost = $this->safe_number($feeObject, 'amount');
         $feeCurrencyId = $this->safe_string($feeObject, 'currency');
         $feeCurrency = $this->safe_currency_code($feeCurrencyId);
         $fee = array(
@@ -557,7 +569,7 @@ class coinbase extends Exchange {
                                 'max' => null,
                             ),
                             'cost' => array(
-                                'min' => $this->safe_float($quoteCurrency, 'min_size'),
+                                'min' => $this->safe_number($quoteCurrency, 'min_size'),
                                 'max' => null,
                             ),
                         ),
@@ -639,7 +651,7 @@ class coinbase extends Exchange {
                 'precision' => null,
                 'limits' => array(
                     'amount' => array(
-                        'min' => $this->safe_float($currency, 'min_size'),
+                        'min' => $this->safe_number($currency, 'min_size'),
                         'max' => null,
                     ),
                     'price' => array(
@@ -670,9 +682,9 @@ class coinbase extends Exchange {
         $buy = $this->publicGetPricesSymbolBuy ($request);
         $sell = $this->publicGetPricesSymbolSell ($request);
         $spot = $this->publicGetPricesSymbolSpot ($request);
-        $ask = $this->safe_float($buy['data'], 'amount');
-        $bid = $this->safe_float($sell['data'], 'amount');
-        $last = $this->safe_float($spot['data'], 'amount');
+        $ask = $this->safe_number($buy['data'], 'amount');
+        $bid = $this->safe_number($sell['data'], 'amount');
+        $last = $this->safe_number($spot['data'], 'amount');
         return array(
             'symbol' => $symbol,
             'timestamp' => $timestamp,
@@ -703,7 +715,10 @@ class coinbase extends Exchange {
 
     public function fetch_balance($params = array ()) {
         $this->load_markets();
-        $response = $this->privateGetAccounts ($params);
+        $request = array(
+            'limit' => 100,
+        );
+        $response = $this->privateGetAccounts (array_merge($request, $params));
         $balances = $this->safe_value($response, 'data');
         $accounts = $this->safe_value($params, 'type', $this->options['accounts']);
         $result = array( 'info' => $response );
@@ -712,7 +727,7 @@ class coinbase extends Exchange {
             if ($this->in_array($balance['type'], $accounts)) {
                 $currencyId = $this->safe_string($balance['balance'], 'currency');
                 $code = $this->safe_currency_code($currencyId);
-                $total = $this->safe_float($balance['balance'], 'amount');
+                $total = $this->safe_number($balance['balance'], 'amount');
                 $free = $total;
                 $used = null;
                 if (is_array($result) && array_key_exists($code, $result)) {
@@ -1013,7 +1028,7 @@ class coinbase extends Exchange {
         //     }
         //
         $amountInfo = $this->safe_value($item, 'amount', array());
-        $amount = $this->safe_float($amountInfo, 'amount');
+        $amount = $this->safe_number($amountInfo, 'amount');
         $direction = null;
         if ($amount < 0) {
             $direction = 'out';
@@ -1039,7 +1054,7 @@ class coinbase extends Exchange {
         if ($feeInfo !== null) {
             $feeCurrencyId = $this->safe_string($feeInfo, 'currency');
             $feeCurrencyCode = $this->safe_currency_code($feeCurrencyId, $currency);
-            $feeAmount = $this->safe_float($feeInfo, 'amount');
+            $feeAmount = $this->safe_number($feeInfo, 'amount');
             $fee = array(
                 'cost' => $feeAmount,
                 'currency' => $feeCurrencyCode,
@@ -1175,7 +1190,9 @@ class coinbase extends Exchange {
         //
         $errorCode = $this->safe_string($response, 'error');
         if ($errorCode !== null) {
-            $this->throw_exactly_matched_exception($this->exceptions, $errorCode, $feedback);
+            $errorMessage = $this->safe_string($response, 'error_description');
+            $this->throw_exactly_matched_exception($this->exceptions['exact'], $errorCode, $feedback);
+            $this->throw_broadly_matched_exception($this->exceptions['broad'], $errorMessage, $feedback);
             throw new ExchangeError($feedback);
         }
         $errors = $this->safe_value($response, 'errors');
@@ -1184,8 +1201,10 @@ class coinbase extends Exchange {
                 $numErrors = is_array($errors) ? count($errors) : 0;
                 if ($numErrors > 0) {
                     $errorCode = $this->safe_string($errors[0], 'id');
+                    $errorMessage = $this->safe_string($errors[0], 'message');
                     if ($errorCode !== null) {
-                        $this->throw_exactly_matched_exception($this->exceptions, $errorCode, $feedback);
+                        $this->throw_exactly_matched_exception($this->exceptions['exact'], $errorCode, $feedback);
+                        $this->throw_broadly_matched_exception($this->exceptions['broad'], $errorMessage, $feedback);
                         throw new ExchangeError($feedback);
                     }
                 }

@@ -164,7 +164,7 @@ module.exports = class indodax extends Exchange {
             const base = this.safeCurrencyCode (baseId);
             const quote = this.safeCurrencyCode (quoteId);
             const symbol = base + '/' + quote;
-            const taker = this.safeFloat (market, 'trade_fee_percent');
+            const taker = this.safeNumber (market, 'trade_fee_percent');
             const isMaintenance = this.safeInteger (market, 'is_maintenance');
             const active = (isMaintenance) ? false : true;
             const pricePrecision = this.safeInteger (market, 'price_round');
@@ -174,11 +174,11 @@ module.exports = class indodax extends Exchange {
             };
             const limits = {
                 'amount': {
-                    'min': this.safeFloat (market, 'trade_min_traded_currency'),
+                    'min': this.safeNumber (market, 'trade_min_traded_currency'),
                     'max': undefined,
                 },
                 'price': {
-                    'min': this.safeFloat (market, 'trade_min_base_currency'),
+                    'min': this.safeNumber (market, 'trade_min_base_currency'),
                     'max': undefined,
                 },
                 'cost': {
@@ -216,8 +216,8 @@ module.exports = class indodax extends Exchange {
             const currencyId = currencyIds[i];
             const code = this.safeCurrencyCode (currencyId);
             const account = this.account ();
-            account['free'] = this.safeFloat (free, currencyId);
-            account['used'] = this.safeFloat (used, currencyId);
+            account['free'] = this.safeNumber (free, currencyId);
+            account['used'] = this.safeNumber (used, currencyId);
             result[code] = account;
         }
         return this.parseBalance (result);
@@ -257,16 +257,16 @@ module.exports = class indodax extends Exchange {
         const timestamp = this.safeTimestamp (ticker, 'server_time');
         const baseVolume = 'vol_' + market['baseId'].toLowerCase ();
         const quoteVolume = 'vol_' + market['quoteId'].toLowerCase ();
-        const last = this.safeFloat (ticker, 'last');
+        const last = this.safeNumber (ticker, 'last');
         return {
             'symbol': symbol,
             'timestamp': timestamp,
             'datetime': this.iso8601 (timestamp),
-            'high': this.safeFloat (ticker, 'high'),
-            'low': this.safeFloat (ticker, 'low'),
-            'bid': this.safeFloat (ticker, 'buy'),
+            'high': this.safeNumber (ticker, 'high'),
+            'low': this.safeNumber (ticker, 'low'),
+            'bid': this.safeNumber (ticker, 'buy'),
             'bidVolume': undefined,
-            'ask': this.safeFloat (ticker, 'sell'),
+            'ask': this.safeNumber (ticker, 'sell'),
             'askVolume': undefined,
             'vwap': undefined,
             'open': undefined,
@@ -276,8 +276,8 @@ module.exports = class indodax extends Exchange {
             'change': undefined,
             'percentage': undefined,
             'average': undefined,
-            'baseVolume': this.safeFloat (ticker, baseVolume),
-            'quoteVolume': this.safeFloat (ticker, quoteVolume),
+            'baseVolume': this.safeNumber (ticker, baseVolume),
+            'quoteVolume': this.safeNumber (ticker, quoteVolume),
             'info': ticker,
         };
     }
@@ -291,8 +291,8 @@ module.exports = class indodax extends Exchange {
         }
         const type = undefined;
         const side = this.safeString (trade, 'type');
-        const price = this.safeFloat (trade, 'price');
-        const amount = this.safeFloat (trade, 'amount');
+        const price = this.safeNumber (trade, 'price');
+        const amount = this.safeNumber (trade, 'amount');
         let cost = undefined;
         if (price !== undefined) {
             if (amount !== undefined) {
@@ -326,6 +326,15 @@ module.exports = class indodax extends Exchange {
         return this.parseTrades (response, market, since, limit);
     }
 
+    parseOrderStatus (status) {
+        const statuses = {
+            'open': 'open',
+            'filled': 'closed',
+            'cancelled': 'canceled',
+        };
+        return this.safeString (statuses, status, status);
+    }
+
     parseOrder (order, market = undefined) {
         //
         //     {
@@ -341,15 +350,10 @@ module.exports = class indodax extends Exchange {
         if ('type' in order) {
             side = order['type'];
         }
-        let status = this.safeString (order, 'status', 'open');
-        if (status === 'filled') {
-            status = 'closed';
-        } else if (status === 'cancelled') {
-            status = 'canceled';
-        }
+        const status = this.parseOrderStatus (this.safeString (order, 'status', 'open'));
         let symbol = undefined;
         let cost = undefined;
-        const price = this.safeFloat (order, 'price');
+        const price = this.safeNumber (order, 'price');
         let amount = undefined;
         let remaining = undefined;
         let filled = undefined;
@@ -363,18 +367,18 @@ module.exports = class indodax extends Exchange {
             if ((market['baseId'] === 'idr') && ('remain_rp' in order)) {
                 baseId = 'rp';
             }
-            cost = this.safeFloat (order, 'order_' + quoteId);
+            cost = this.safeNumber (order, 'order_' + quoteId);
             if (cost) {
                 amount = cost / price;
-                const remainingCost = this.safeFloat (order, 'remain_' + quoteId);
+                const remainingCost = this.safeNumber (order, 'remain_' + quoteId);
                 if (remainingCost !== undefined) {
                     remaining = remainingCost / price;
                     filled = amount - remaining;
                 }
             } else {
-                amount = this.safeFloat (order, 'order_' + baseId);
+                amount = this.safeNumber (order, 'order_' + baseId);
                 cost = price * amount;
-                remaining = this.safeFloat (order, 'remain_' + baseId);
+                remaining = this.safeNumber (order, 'remain_' + baseId);
                 filled = amount - remaining;
             }
         }
@@ -394,8 +398,11 @@ module.exports = class indodax extends Exchange {
             'lastTradeTimestamp': undefined,
             'symbol': symbol,
             'type': 'limit',
+            'timeInForce': undefined,
+            'postOnly': undefined,
             'side': side,
             'price': price,
+            'stopPrice': undefined,
             'cost': cost,
             'average': average,
             'amount': amount,
@@ -409,7 +416,7 @@ module.exports = class indodax extends Exchange {
 
     async fetchOrder (id, symbol = undefined, params = {}) {
         if (symbol === undefined) {
-            throw new ArgumentsRequired (this.id + ' fetchOrder requires a symbol');
+            throw new ArgumentsRequired (this.id + ' fetchOrder() requires a symbol');
         }
         await this.loadMarkets ();
         const market = this.market (symbol);
@@ -456,7 +463,7 @@ module.exports = class indodax extends Exchange {
 
     async fetchClosedOrders (symbol = undefined, since = undefined, limit = undefined, params = {}) {
         if (symbol === undefined) {
-            throw new ArgumentsRequired (this.id + ' fetchOrders requires a symbol argument');
+            throw new ArgumentsRequired (this.id + ' fetchOrders() requires a symbol argument');
         }
         await this.loadMarkets ();
         const request = {};
@@ -466,12 +473,9 @@ module.exports = class indodax extends Exchange {
             request['pair'] = market['id'];
         }
         const response = await this.privatePostOrderHistory (this.extend (request, params));
-        let orders = this.parseOrders (response['return']['orders'], market, since, limit);
+        let orders = this.parseOrders (response['return']['orders'], market);
         orders = this.filterBy (orders, 'status', 'closed');
-        if (symbol !== undefined) {
-            return this.filterBySymbol (orders, symbol);
-        }
-        return orders;
+        return this.filterBySymbolSinceLimit (orders, symbol, since, limit);
     }
 
     async createOrder (symbol, type, side, amount, price = undefined, params = {}) {
@@ -493,19 +497,21 @@ module.exports = class indodax extends Exchange {
         }
         request[currency] = amount;
         const result = await this.privatePostTrade (this.extend (request, params));
+        const data = this.safeValue (result, 'return', {});
+        const id = this.safeString (data, 'order_id');
         return {
             'info': result,
-            'id': result['return']['order_id'].toString (),
+            'id': id,
         };
     }
 
     async cancelOrder (id, symbol = undefined, params = {}) {
         if (symbol === undefined) {
-            throw new ArgumentsRequired (this.id + ' cancelOrder requires a symbol argument');
+            throw new ArgumentsRequired (this.id + ' cancelOrder() requires a symbol argument');
         }
         const side = this.safeValue (params, 'side');
         if (side === undefined) {
-            throw new ArgumentsRequired (this.id + ' cancelOrder requires an extra "side" param');
+            throw new ArgumentsRequired (this.id + ' cancelOrder() requires an extra "side" param');
         }
         await this.loadMarkets ();
         const market = this.market (symbol);

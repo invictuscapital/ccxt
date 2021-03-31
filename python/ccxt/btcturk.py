@@ -4,7 +4,6 @@
 # https://github.com/ccxt/ccxt/blob/master/CONTRIBUTING.md#how-to-contribute-code
 
 from ccxt.base.exchange import Exchange
-import base64
 import hashlib
 import math
 from ccxt.base.errors import ExchangeError
@@ -126,9 +125,9 @@ class btcturk(Exchange):
             used = currency['id'] + '_reserved'
             if free in response:
                 account = self.account()
-                account['free'] = self.safe_float(response, free)
-                account['total'] = self.safe_float(response, total)
-                account['used'] = self.safe_float(response, used)
+                account['free'] = self.safe_number(response, free)
+                account['total'] = self.safe_number(response, total)
+                account['used'] = self.safe_number(response, used)
                 result[code] = account
         return self.parse_balance(result)
 
@@ -147,26 +146,26 @@ class btcturk(Exchange):
         if market:
             symbol = market['symbol']
         timestamp = self.safe_timestamp(ticker, 'timestamp')
-        last = self.safe_float(ticker, 'last')
+        last = self.safe_number(ticker, 'last')
         return {
             'symbol': symbol,
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
-            'high': self.safe_float(ticker, 'high'),
-            'low': self.safe_float(ticker, 'low'),
-            'bid': self.safe_float(ticker, 'bid'),
+            'high': self.safe_number(ticker, 'high'),
+            'low': self.safe_number(ticker, 'low'),
+            'bid': self.safe_number(ticker, 'bid'),
             'bidVolume': None,
-            'ask': self.safe_float(ticker, 'ask'),
+            'ask': self.safe_number(ticker, 'ask'),
             'askVolume': None,
             'vwap': None,
-            'open': self.safe_float(ticker, 'open'),
+            'open': self.safe_number(ticker, 'open'),
             'close': last,
             'last': last,
             'previousClose': None,
             'change': None,
             'percentage': None,
-            'average': self.safe_float(ticker, 'average'),
-            'baseVolume': self.safe_float(ticker, 'volume'),
+            'average': self.safe_number(ticker, 'average'),
+            'baseVolume': self.safe_number(ticker, 'volume'),
             'quoteVolume': None,
             'info': ticker,
         }
@@ -184,7 +183,7 @@ class btcturk(Exchange):
                 market = self.markets_by_id[symbol]
                 symbol = market['symbol']
             result[symbol] = self.parse_ticker(ticker, market)
-        return result
+        return self.filter_by_array(result, 'symbol', symbols)
 
     def fetch_ticker(self, symbol, params={}):
         self.load_markets()
@@ -195,8 +194,8 @@ class btcturk(Exchange):
     def parse_trade(self, trade, market=None):
         timestamp = self.safe_timestamp(trade, 'date')
         id = self.safe_string(trade, 'tid')
-        price = self.safe_float(trade, 'price')
-        amount = self.safe_float(trade, 'amount')
+        price = self.safe_number(trade, 'price')
+        amount = self.safe_number(trade, 'amount')
         cost = None
         if amount is not None:
             if price is not None:
@@ -233,11 +232,11 @@ class btcturk(Exchange):
     def parse_ohlcv(self, ohlcv, market=None):
         return [
             self.parse8601(self.safe_string(ohlcv, 'Time')),
-            self.safe_float(ohlcv, 'Open'),
-            self.safe_float(ohlcv, 'High'),
-            self.safe_float(ohlcv, 'Low'),
-            self.safe_float(ohlcv, 'Close'),
-            self.safe_float(ohlcv, 'Volume'),
+            self.safe_number(ohlcv, 'Open'),
+            self.safe_number(ohlcv, 'High'),
+            self.safe_number(ohlcv, 'Low'),
+            self.safe_number(ohlcv, 'Close'),
+            self.safe_number(ohlcv, 'Volume'),
         ]
 
     def fetch_ohlcv(self, symbol, timeframe='1d', since=None, limit=None, params={}):
@@ -258,7 +257,7 @@ class btcturk(Exchange):
         }
         if type == 'market':
             if not ('Total' in params):
-                raise ExchangeError(self.id + ' createOrder requires the "Total" extra parameter for market orders(amount and price are both ignored)')
+                raise ExchangeError(self.id + ' createOrder() requires the "Total" extra parameter for market orders(amount and price are both ignored)')
         else:
             request['Price'] = price
             request['Amount'] = amount
@@ -289,12 +288,12 @@ class btcturk(Exchange):
             self.check_required_credentials()
             nonce = str(self.nonce())
             body = self.urlencode(params)
-            secret = base64.b64decode(self.secret)
+            secret = self.base64_to_binary(self.secret)
             auth = self.apiKey + nonce
             headers = {
                 'X-PCK': self.apiKey,
                 'X-Stamp': nonce,
-                'X-Signature': base64.b64encode(self.hmac(self.encode(auth), secret, hashlib.sha256, 'binary')),
+                'X-Signature': self.hmac(self.encode(auth), secret, hashlib.sha256, 'base64'),
                 'Content-Type': 'application/x-www-form-urlencoded',
             }
         return {'url': url, 'method': method, 'body': body, 'headers': headers}

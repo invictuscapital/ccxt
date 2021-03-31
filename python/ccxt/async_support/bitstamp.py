@@ -22,6 +22,8 @@ from ccxt.base.errors import InvalidAddress
 from ccxt.base.errors import InvalidOrder
 from ccxt.base.errors import OrderNotFound
 from ccxt.base.errors import NotSupported
+from ccxt.base.errors import ExchangeNotAvailable
+from ccxt.base.errors import OnMaintenance
 from ccxt.base.errors import InvalidNonce
 
 
@@ -37,12 +39,13 @@ class bitstamp(Exchange):
             'userAgent': self.userAgents['chrome'],
             'pro': True,
             'has': {
-                'cancelOrder': True,
                 'CORS': True,
+                'cancelOrder': True,
                 'createOrder': True,
                 'fetchBalance': True,
                 'fetchDepositAddress': True,
                 'fetchMarkets': True,
+                'fetchCurrencies': True,
                 'fetchMyTrades': True,
                 'fetchOHLCV': True,
                 'fetchOpenOrders': True,
@@ -53,6 +56,11 @@ class bitstamp(Exchange):
                 'fetchTransactions': True,
                 'fetchWithdrawals': True,
                 'withdraw': True,
+                'fetchTradingFee': True,
+                'fetchTradingFees': True,
+                'fetchFundingFees': True,
+                'fetchFees': True,
+                'fetchLedger': True,
             },
             'urls': {
                 'logo': 'https://user-images.githubusercontent.com/1294454/27786377-8c8ab57e-5fe9-11e7-8ea4-2b05b6bcceec.jpg',
@@ -118,6 +126,26 @@ class bitstamp(Exchange):
                         'eth_address/',
                         'xrp_withdrawal/',
                         'xrp_address/',
+                        'xlm_withdrawal/',
+                        'xlm_address/',
+                        'pax_withdrawal/',
+                        'pax_address/',
+                        'link_withdrawal/',
+                        'link_address/',
+                        'usdc_withdrawal/',
+                        'usdc_address/',
+                        'omg_withdrawal/',
+                        'omg_address/',
+                        'dai_withdrawal/',
+                        'dai_address/',
+                        'knc_withdrawal/',
+                        'knc_address/',
+                        'mkr_withdrawal/',
+                        'mkr_address/',
+                        'zrx_withdrawal/',
+                        'zrx_address/',
+                        'gusd_withdrawal/',
+                        'gusd_address/',
                         'transfer-to-main/',
                         'transfer-from-main/',
                         'withdrawal-requests/',
@@ -156,7 +184,13 @@ class bitstamp(Exchange):
                             [2000000, 0.13 / 100],
                             [4000000, 0.12 / 100],
                             [20000000, 0.11 / 100],
-                            [20000001, 0.10 / 100],
+                            [50000000, 0.10 / 100],
+                            [100000000, 0.07 / 100],
+                            [500000000, 0.05 / 100],
+                            [2000000000, 0.03 / 100],
+                            [6000000000, 0.01 / 100],
+                            [10000000000, 0.005 / 100],
+                            [10000000001, 0.0],
                         ],
                         'maker': [
                             [0, 0.5 / 100],
@@ -169,7 +203,13 @@ class bitstamp(Exchange):
                             [2000000, 0.13 / 100],
                             [4000000, 0.12 / 100],
                             [20000000, 0.11 / 100],
-                            [20000001, 0.10 / 100],
+                            [50000000, 0.10 / 100],
+                            [100000000, 0.07 / 100],
+                            [500000000, 0.05 / 100],
+                            [2000000000, 0.03 / 100],
+                            [6000000000, 0.01 / 100],
+                            [10000000000, 0.005 / 100],
+                            [10000000001, 0.0],
                         ],
                     },
                 },
@@ -177,13 +217,15 @@ class bitstamp(Exchange):
                     'tierBased': False,
                     'percentage': False,
                     'withdraw': {
-                        'BTC': 0,
-                        'BCH': 0,
-                        'LTC': 0,
-                        'ETH': 0,
-                        'XRP': 0,
+                        'BTC': 0.0005,
+                        'BCH': 0.0001,
+                        'LTC': 0.001,
+                        'ETH': 0.001,
+                        'XRP': 0.02,
+                        'XLM': 0.005,
+                        'PAX': 0.5,
                         'USD': 25,
-                        'EUR': 0.90,
+                        'EUR': 3.0,
                     },
                     'deposit': {
                         'BTC': 0,
@@ -191,7 +233,9 @@ class bitstamp(Exchange):
                         'LTC': 0,
                         'ETH': 0,
                         'XRP': 0,
-                        'USD': 25,
+                        'XLM': 0,
+                        'PAX': 0,
+                        'USD': 7.5,
                         'EUR': 0,
                     },
                 },
@@ -209,6 +253,8 @@ class bitstamp(Exchange):
                     'Please update your profile with your FATCA information, before using API.': PermissionDenied,
                     'Order not found': OrderNotFound,
                     'Price is more than 20% below market price.': InvalidOrder,
+                    'Bitstamp.net is under scheduled maintenance.': OnMaintenance,  # {"error": "Bitstamp.net is under scheduled maintenance. We'll be back soon."}
+                    'Order could not be placed.': ExchangeNotAvailable,  # Order could not be placed(perhaps due to internal error or trade halt). Please retry placing order.
                 },
                 'broad': {
                     'Minimum order size is': InvalidOrder,  # Minimum order size is 5.0 EUR.
@@ -219,7 +265,7 @@ class bitstamp(Exchange):
         })
 
     async def fetch_markets(self, params={}):
-        response = await self.publicGetTradingPairsInfo(params)
+        response = await self.fetch_markets_from_cache(params)
         result = []
         for i in range(0, len(response)):
             market = response[i]
@@ -233,13 +279,15 @@ class bitstamp(Exchange):
             symbolId = baseId + '_' + quoteId
             id = self.safe_string(market, 'url_symbol')
             precision = {
-                'amount': market['base_decimals'],
-                'price': market['counter_decimals'],
+                'amount': self.safe_integer(market, 'base_decimals'),
+                'price': self.safe_integer(market, 'counter_decimals'),
             }
-            parts = market['minimum_order'].split(' ')
+            minimumOrder = self.safe_string(market, 'minimum_order')
+            parts = minimumOrder.split(' ')
             cost = parts[0]
             # cost, currency = market['minimum_order'].split(' ')
-            active = (market['trading'] == 'Enabled')
+            trading = self.safe_string(market, 'trading')
+            active = (trading == 'Enabled')
             result.append({
                 'id': id,
                 'symbol': symbol,
@@ -266,6 +314,79 @@ class bitstamp(Exchange):
                     },
                 },
             })
+        return result
+
+    def construct_currency_object(self, id, code, name, precision, minCost, originalPayload):
+        currencyType = 'crypto'
+        description = self.describe()
+        if self.is_fiat(code):
+            currencyType = 'fiat'
+        return {
+            'id': id,
+            'code': code,
+            'info': originalPayload,  # the original payload
+            'type': currencyType,
+            'name': name,
+            'active': True,
+            'fee': self.safe_number(description['fees']['funding']['withdraw'], code),
+            'precision': precision,
+            'limits': {
+                'amount': {
+                    'min': math.pow(10, -precision),
+                    'max': None,
+                },
+                'price': {
+                    'min': math.pow(10, -precision),
+                    'max': None,
+                },
+                'cost': {
+                    'min': minCost,
+                    'max': None,
+                },
+                'withdraw': {
+                    'min': None,
+                    'max': None,
+                },
+            },
+        }
+
+    async def fetch_markets_from_cache(self, params={}):
+        # self method is now redundant
+        # currencies are now fetched before markets
+        options = self.safe_value(self.options, 'fetchMarkets', {})
+        timestamp = self.safe_integer(options, 'timestamp')
+        expires = self.safe_integer(options, 'expires', 1000)
+        now = self.milliseconds()
+        if (timestamp is None) or ((now - timestamp) > expires):
+            response = await self.publicGetTradingPairsInfo(params)
+            self.options['fetchMarkets'] = self.extend(options, {
+                'response': response,
+                'timestamp': now,
+            })
+        return self.safe_value(self.options['fetchMarkets'], 'response')
+
+    async def fetch_currencies(self, params={}):
+        response = await self.fetch_markets_from_cache(params)
+        result = {}
+        for i in range(0, len(response)):
+            market = response[i]
+            name = self.safe_string(market, 'name')
+            base, quote = name.split('/')
+            baseId = base.lower()
+            quoteId = quote.lower()
+            base = self.safe_currency_code(base)
+            quote = self.safe_currency_code(quote)
+            description = self.safe_string(market, 'description')
+            baseDescription, quoteDescription = description.split(' / ')
+            minimumOrder = self.safe_string(market, 'minimum_order')
+            parts = minimumOrder.split(' ')
+            cost = parts[0]
+            if not (base in result):
+                baseDecimals = self.safe_integer(market, 'base_decimals')
+                result[base] = self.construct_currency_object(baseId, base, baseDescription, baseDecimals, None, market)
+            if not (quote in result):
+                counterDecimals = self.safe_integer(market, 'counter_decimals')
+                result[quote] = self.construct_currency_object(quoteId, quote, quoteDescription, counterDecimals, float(cost), market)
         return result
 
     async def fetch_order_book(self, symbol, limit=None, params={}):
@@ -303,24 +424,24 @@ class bitstamp(Exchange):
         }
         ticker = await self.publicGetTickerPair(self.extend(request, params))
         timestamp = self.safe_timestamp(ticker, 'timestamp')
-        vwap = self.safe_float(ticker, 'vwap')
-        baseVolume = self.safe_float(ticker, 'volume')
+        vwap = self.safe_number(ticker, 'vwap')
+        baseVolume = self.safe_number(ticker, 'volume')
         quoteVolume = None
         if baseVolume is not None and vwap is not None:
             quoteVolume = baseVolume * vwap
-        last = self.safe_float(ticker, 'last')
+        last = self.safe_number(ticker, 'last')
         return {
             'symbol': symbol,
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
-            'high': self.safe_float(ticker, 'high'),
-            'low': self.safe_float(ticker, 'low'),
-            'bid': self.safe_float(ticker, 'bid'),
+            'high': self.safe_number(ticker, 'high'),
+            'low': self.safe_number(ticker, 'low'),
+            'bid': self.safe_number(ticker, 'bid'),
             'bidVolume': None,
-            'ask': self.safe_float(ticker, 'ask'),
+            'ask': self.safe_number(ticker, 'ask'),
             'askVolume': None,
             'vwap': vwap,
-            'open': self.safe_float(ticker, 'open'),
+            'open': self.safe_number(ticker, 'open'),
             'close': last,
             'last': last,
             'previousClose': None,
@@ -361,7 +482,7 @@ class bitstamp(Exchange):
         for i in range(0, len(ids)):
             id = ids[i]
             if id.find('_') < 0:
-                value = self.safe_float(transaction, id)
+                value = self.safe_number(transaction, id)
                 if (value is not None) and (value != 0):
                     return id
         return None
@@ -432,11 +553,11 @@ class bitstamp(Exchange):
         id = self.safe_string_2(trade, 'id', 'tid')
         symbol = None
         side = None
-        price = self.safe_float(trade, 'price')
-        amount = self.safe_float(trade, 'amount')
+        price = self.safe_number(trade, 'price')
+        amount = self.safe_number(trade, 'amount')
         orderId = self.safe_string(trade, 'order_id')
         type = None
-        cost = self.safe_float(trade, 'cost')
+        cost = self.safe_number(trade, 'cost')
         if market is None:
             keys = list(trade.keys())
             for i in range(0, len(keys)):
@@ -448,12 +569,12 @@ class bitstamp(Exchange):
             # try to deduce it from used keys
             if market is None:
                 market = self.get_market_from_trade(trade)
-        feeCost = self.safe_float(trade, 'fee')
+        feeCost = self.safe_number(trade, 'fee')
         feeCurrency = None
         if market is not None:
-            price = self.safe_float(trade, market['symbolId'], price)
-            amount = self.safe_float(trade, market['baseId'], amount)
-            cost = self.safe_float(trade, market['quoteId'], cost)
+            price = self.safe_number(trade, market['symbolId'], price)
+            amount = self.safe_number(trade, market['baseId'], amount)
+            cost = self.safe_number(trade, market['quoteId'], cost)
             feeCurrency = market['quote']
             symbol = market['symbol']
         timestamp = self.safe_string_2(trade, 'date', 'datetime')
@@ -507,6 +628,15 @@ class bitstamp(Exchange):
             'fee': fee,
         }
 
+    def parse_trading_fee(self, balances, symbol):
+        market = self.market(symbol)
+        tradeFee = self.safe_number(balances, market['id'] + '_fee')
+        return {
+            'symbol': symbol,
+            'maker': tradeFee,
+            'taker': tradeFee,
+        }
+
     async def fetch_trades(self, symbol, since=None, limit=None, params={}):
         await self.load_markets()
         market = self.market(symbol)
@@ -548,11 +678,11 @@ class bitstamp(Exchange):
         #
         return [
             self.safe_timestamp(ohlcv, 'timestamp'),
-            self.safe_float(ohlcv, 'open'),
-            self.safe_float(ohlcv, 'high'),
-            self.safe_float(ohlcv, 'low'),
-            self.safe_float(ohlcv, 'close'),
-            self.safe_float(ohlcv, 'volume'),
+            self.safe_number(ohlcv, 'open'),
+            self.safe_number(ohlcv, 'high'),
+            self.safe_number(ohlcv, 'low'),
+            self.safe_number(ohlcv, 'close'),
+            self.safe_number(ohlcv, 'volume'),
         ]
 
     async def fetch_ohlcv(self, symbol, timeframe='1m', since=None, limit=None, params={}):
@@ -565,7 +695,7 @@ class bitstamp(Exchange):
         duration = self.parse_timeframe(timeframe)
         if limit is None:
             if since is None:
-                raise ArgumentsRequired(self.id + ' fetchOHLCV requires a since argument or a limit argument')
+                raise ArgumentsRequired(self.id + ' fetchOHLCV() requires a since argument or a limit argument')
             else:
                 limit = 1000
                 start = int(since / 1000)
@@ -605,11 +735,75 @@ class bitstamp(Exchange):
             currency = self.currency(code)
             currencyId = currency['id']
             account = self.account()
-            account['free'] = self.safe_float(balance, currencyId + '_available')
-            account['used'] = self.safe_float(balance, currencyId + '_reserved')
-            account['total'] = self.safe_float(balance, currencyId + '_balance')
+            account['free'] = self.safe_number(balance, currencyId + '_available')
+            account['used'] = self.safe_number(balance, currencyId + '_reserved')
+            account['total'] = self.safe_number(balance, currencyId + '_balance')
             result[code] = account
         return self.parse_balance(result)
+
+    async def fetch_trading_fee(self, symbol, params={}):
+        await self.load_markets()
+        request = {}
+        method = 'privatePostBalance'
+        market = None
+        if symbol is not None:
+            market = self.market(symbol)
+            request['pair'] = market['id']
+            method += 'Pair'
+        balance = await getattr(self, method)(self.extend(request, params))
+        return {
+            'info': balance,
+            'symbol': symbol,
+            'maker': balance['fee'],
+            'taker': balance['fee'],
+        }
+
+    def prase_trading_fees(self, balance):
+        result = {'info': balance}
+        markets = list(self.markets.keys())
+        for i in range(0, len(markets)):
+            symbol = markets[i]
+            fee = self.parse_trading_fee(balance, symbol)
+            result[symbol] = fee
+        return result
+
+    async def fetch_trading_fees(self, params={}):
+        await self.load_markets()
+        balance = await self.privatePostBalance(params)
+        return self.prase_trading_fees(balance)
+
+    def parse_funding_fees(self, balance):
+        withdraw = {}
+        ids = list(balance.keys())
+        for i in range(0, len(ids)):
+            id = ids[i]
+            if id.find('_withdrawal_fee') >= 0:
+                currencyId = id.split('_')[0]
+                code = self.safe_currency_code(currencyId)
+                withdraw[code] = self.safe_number(balance, id)
+        return {
+            'info': balance,
+            'withdraw': withdraw,
+            'deposit': {},
+        }
+
+    async def fetch_funding_fees(self, params={}):
+        await self.load_markets()
+        balance = await self.privatePostBalance(params)
+        return self.parse_funding_fees(balance)
+
+    async def fetch_fees(self, params={}):
+        await self.load_markets()
+        balance = await self.privatePostBalance(params)
+        tradingFees = self.prase_trading_fees(balance)
+        del tradingFees['info']
+        fundingFees = self.parse_funding_fees(balance)
+        del fundingFees['info']
+        return {
+            'info': balance,
+            'trading': tradingFees,
+            'funding': fundingFees,
+        }
 
     async def create_order(self, symbol, type, side, amount, price=None, params={}):
         await self.load_markets()
@@ -621,6 +815,8 @@ class bitstamp(Exchange):
         }
         if type == 'market':
             method += 'Market'
+        elif type == 'instant':
+            method += 'Instant'
         else:
             request['price'] = self.price_to_precision(symbol, price)
         method += 'Pair'
@@ -737,6 +933,8 @@ class bitstamp(Exchange):
         request = {}
         if since is not None:
             request['timedelta'] = self.milliseconds() - since
+        else:
+            request['timedelta'] = 50000000  # use max bitstamp approved value
         response = await self.privatePostWithdrawalRequests(self.extend(request, params))
         #
         #     [
@@ -808,16 +1006,16 @@ class bitstamp(Exchange):
         id = self.safe_string(transaction, 'id')
         currencyId = self.get_currency_id_from_transaction(transaction)
         code = self.safe_currency_code(currencyId, currency)
-        feeCost = self.safe_float(transaction, 'fee')
+        feeCost = self.safe_number(transaction, 'fee')
         feeCurrency = None
         amount = None
         if 'amount' in transaction:
-            amount = self.safe_float(transaction, 'amount')
+            amount = self.safe_number(transaction, 'amount')
         elif currency is not None:
-            amount = self.safe_float(transaction, currency['id'], amount)
+            amount = self.safe_number(transaction, currency['id'], amount)
             feeCurrency = currency['code']
         elif (code is not None) and (currencyId is not None):
-            amount = self.safe_float(transaction, currencyId, amount)
+            amount = self.safe_number(transaction, currencyId, amount)
             feeCurrency = code
         if amount is not None:
             # withdrawals have a negative amount
@@ -931,82 +1129,146 @@ class bitstamp(Exchange):
             side = 'sell' if (side == '1') else 'buy'
         # there is no timestamp from fetchOrder
         timestamp = self.parse8601(self.safe_string(order, 'datetime'))
-        lastTradeTimestamp = None
-        symbol = None
         marketId = self.safe_string_lower(order, 'currency_pair')
-        if marketId is not None:
-            marketId = marketId.replace('/', '')
-            if marketId in self.markets_by_id:
-                market = self.markets_by_id[marketId]
-                symbol = market['symbol']
-        amount = self.safe_float(order, 'amount')
-        filled = 0.0
-        trades = []
-        transactions = self.safe_value(order, 'transactions', [])
-        feeCost = None
-        cost = None
-        numTransactions = len(transactions)
-        if numTransactions > 0:
-            feeCost = 0.0
-            for i in range(0, numTransactions):
-                trade = self.parse_trade(self.extend({
-                    'order_id': id,
-                    'side': side,
-                }, transactions[i]), market)
-                filled = self.sum(filled, trade['amount'])
-                feeCost = self.sum(feeCost, trade['fee']['cost'])
-                if cost is None:
-                    cost = 0.0
-                cost = self.sum(cost, trade['cost'])
-                trades.append(trade)
-            lastTradeTimestamp = trades[numTransactions - 1]['timestamp']
+        symbol = self.safe_symbol(marketId, market, '/')
         status = self.parse_order_status(self.safe_string(order, 'status'))
-        if (status == 'closed') and (amount is None):
-            amount = filled
-        remaining = None
-        if amount is not None:
-            remaining = amount - filled
-        price = self.safe_float(order, 'price')
-        if market is None:
-            market = self.get_market_from_trades(trades)
-        feeCurrency = None
-        if market is not None:
-            if symbol is None:
-                symbol = market['symbol']
-            feeCurrency = market['quote']
-        if cost is None:
-            if price is not None:
-                cost = price * filled
-        elif price is None:
-            if filled > 0:
-                price = cost / filled
-        fee = None
-        if feeCost is not None:
-            if feeCurrency is not None:
-                fee = {
-                    'cost': feeCost,
-                    'currency': feeCurrency,
-                }
-        return {
+        amount = self.safe_number(order, 'amount')
+        transactions = self.safe_value(order, 'transactions', [])
+        trades = self.parse_trades(transactions, market)
+        length = len(trades)
+        if length:
+            symbol = trades[0]['symbol']
+        price = self.safe_number(order, 'price')
+        return self.safe_order({
             'id': id,
             'clientOrderId': None,
             'datetime': self.iso8601(timestamp),
             'timestamp': timestamp,
-            'lastTradeTimestamp': lastTradeTimestamp,
+            'lastTradeTimestamp': None,
             'status': status,
             'symbol': symbol,
             'type': None,
+            'timeInForce': None,
+            'postOnly': None,
             'side': side,
             'price': price,
-            'cost': cost,
+            'stopPrice': None,
+            'cost': None,
             'amount': amount,
-            'filled': filled,
-            'remaining': remaining,
+            'filled': None,
+            'remaining': None,
             'trades': trades,
-            'fee': fee,
+            'fee': None,
             'info': order,
             'average': None,
+        })
+
+    def parse_ledger_entry_type(self, type):
+        types = {
+            '0': 'transaction',
+            '1': 'transaction',
+            '2': 'trade',
+            '14': 'transfer',
         }
+        return self.safe_string(types, type, type)
+
+    def parse_ledger_entry(self, item, currency=None):
+        #
+        #     [
+        #         {
+        #             "fee": "0.00000000",
+        #             "btc_usd": "0.00",
+        #             "id": 1234567894,
+        #             "usd": 0,
+        #             "btc": 0,
+        #             "datetime": "2018-09-08 09:00:31",
+        #             "type": "1",
+        #             "xrp": "-20.00000000",
+        #             "eur": 0,
+        #         },
+        #         {
+        #             "fee": "0.00000000",
+        #             "btc_usd": "0.00",
+        #             "id": 1134567891,
+        #             "usd": 0,
+        #             "btc": 0,
+        #             "datetime": "2018-09-07 18:47:52",
+        #             "type": "0",
+        #             "xrp": "20.00000000",
+        #             "eur": 0,
+        #         },
+        #     ]
+        #
+        type = self.parse_ledger_entry_type(self.safe_string(item, 'type'))
+        if type == 'trade':
+            parsedTrade = self.parse_trade(item)
+            market = None
+            keys = list(item.keys())
+            for i in range(0, len(keys)):
+                if keys[i].find('_') >= 0:
+                    marketId = keys[i].replace('_', '')
+                    if marketId in self.markets_by_id:
+                        market = self.markets_by_id[marketId]
+            # if the market is still not defined
+            # try to deduce it from used keys
+            if market is None:
+                market = self.get_market_from_trade(item)
+            direction = parsedTrade['side'] == 'in' if 'buy' else 'out'
+            return {
+                'id': parsedTrade['id'],
+                'info': item,
+                'timestamp': parsedTrade['timestamp'],
+                'datetime': parsedTrade['datetime'],
+                'direction': direction,
+                'account': None,
+                'referenceId': parsedTrade['order'],
+                'referenceAccount': None,
+                'type': type,
+                'currency': market['base'],
+                'amount': parsedTrade['amount'],
+                'before': None,
+                'after': None,
+                'status': 'ok',
+                'fee': parsedTrade['fee'],
+            }
+        else:
+            parsedTransaction = self.parse_transaction(item)
+            direction = None
+            if 'amount' in item:
+                amount = self.safe_number(item, 'amount')
+                direction = amount > 'in' if 0 else 'out'
+            elif ('currency' in parsedTransaction) and parsedTransaction['currency'] is not None:
+                currencyId = self.currency_id(parsedTransaction['currency'])
+                amount = self.safe_number(item, currencyId)
+                direction = amount > 'in' if 0 else 'out'
+            return {
+                'id': parsedTransaction['id'],
+                'info': item,
+                'timestamp': parsedTransaction['timestamp'],
+                'datetime': parsedTransaction['datetime'],
+                'direction': direction,
+                'account': None,
+                'referenceId': parsedTransaction['txid'],
+                'referenceAccount': None,
+                'type': type,
+                'currency': parsedTransaction['currency'],
+                'amount': parsedTransaction['amount'],
+                'before': None,
+                'after': None,
+                'status': parsedTransaction['status'],
+                'fee': parsedTransaction['fee'],
+            }
+
+    async def fetch_ledger(self, code=None, since=None, limit=None, params={}):
+        await self.load_markets()
+        request = {}
+        if limit is not None:
+            request['limit'] = limit
+        response = await self.privatePostUserTransactions(self.extend(request, params))
+        currency = None
+        if code is not None:
+            currency = self.currency(code)
+        return self.parse_ledger(response, currency, since, limit)
 
     async def fetch_open_orders(self, symbol=None, since=None, limit=None, params={}):
         market = None
@@ -1025,16 +1287,10 @@ class bitstamp(Exchange):
         #         }
         #     ]
         #
-        result = []
-        for i in range(0, len(response)):
-            order = self.parse_order(response[i], market)
-            result.append(self.extend(order, {
-                'status': 'open',
-                'type': 'limit',
-            }))
-        if symbol is None:
-            return self.filter_by_since_limit(result, since, limit)
-        return self.filter_by_symbol_since_limit(result, symbol, since, limit)
+        return self.parse_orders(response, market, since, limit, {
+            'status': 'open',
+            'type': 'limit',
+        })
 
     def get_currency_name(self, code):
         if code == 'BTC':
@@ -1042,15 +1298,11 @@ class bitstamp(Exchange):
         return code.lower()
 
     def is_fiat(self, code):
-        if code == 'USD':
-            return True
-        if code == 'EUR':
-            return True
-        return False
+        return code == 'USD' or code == 'EUR' or code == 'GBP'
 
     async def fetch_deposit_address(self, code, params={}):
         if self.is_fiat(code):
-            raise NotSupported(self.id + ' fiat fetchDepositAddress() for ' + code + ' is not implemented yet')
+            raise NotSupported(self.id + ' fiat fetchDepositAddress() for ' + code + ' is not supported!')
         name = self.get_currency_name(code)
         v1 = (code == 'BTC')
         method = 'v1' if v1 else 'private'  # v1 or v2
@@ -1061,7 +1313,7 @@ class bitstamp(Exchange):
         if v1:
             response = json.loads(response)
         address = response if v1 else self.safe_string(response, 'address')
-        tag = None if v1 else self.safe_string(response, 'destination_tag')
+        tag = None if v1 else self.safe_string_2(response, 'memo_id', 'destination_tag')
         self.check_address(address)
         return {
             'currency': code,
@@ -1071,20 +1323,28 @@ class bitstamp(Exchange):
         }
 
     async def withdraw(self, code, amount, address, tag=None, params={}):
+        # For fiat withdrawals please provide all required additional parameters in the 'params'
+        # Check https://www.bitstamp.net/api/ under 'Open bank withdrawal' for list and description.
+        await self.load_markets()
         self.check_address(address)
-        if self.is_fiat(code):
-            raise NotSupported(self.id + ' fiat withdraw() for ' + code + ' is not implemented yet')
-        name = self.get_currency_name(code)
         request = {
             'amount': amount,
-            'address': address,
         }
-        v1 = (code == 'BTC')
-        method = 'v1' if v1 else 'private'  # v1 or v2
-        method += 'Post' + self.capitalize(name) + 'Withdrawal'
-        if code == 'XRP':
-            if tag is not None:
-                request['destination_tag'] = tag
+        method = None
+        if not self.is_fiat(code):
+            name = self.get_currency_name(code)
+            v1 = (code == 'BTC')
+            method = 'v1' if v1 else 'private'  # v1 or v2
+            method += 'Post' + self.capitalize(name) + 'Withdrawal'
+            if code == 'XRP':
+                if tag is not None:
+                    request['destination_tag'] = tag
+            request['address'] = address
+        else:
+            method = 'privatePostWithdrawalOpen'
+            currency = self.currency(code)
+            request['iban'] = address
+            request['account_currency'] = currency['id']
         response = await getattr(self, method)(self.extend(request, params))
         return {
             'info': response,

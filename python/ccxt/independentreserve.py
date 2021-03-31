@@ -19,8 +19,10 @@ class independentreserve(Exchange):
                 'CORS': False,
                 'createOrder': True,
                 'fetchBalance': True,
+                'fetchClosedOrders': True,
                 'fetchMarkets': True,
                 'fetchMyTrades': True,
+                'fetchOpenOrders': True,
                 'fetchOrder': True,
                 'fetchOrderBook': True,
                 'fetchTicker': True,
@@ -121,8 +123,8 @@ class independentreserve(Exchange):
             currencyId = self.safe_string(balance, 'CurrencyCode')
             code = self.safe_currency_code(currencyId)
             account = self.account()
-            account['free'] = self.safe_float(balance, 'AvailableBalance')
-            account['total'] = self.safe_float(balance, 'TotalBalance')
+            account['free'] = self.safe_number(balance, 'AvailableBalance')
+            account['total'] = self.safe_number(balance, 'TotalBalance')
             result[code] = account
         return self.parse_balance(result)
 
@@ -142,16 +144,16 @@ class independentreserve(Exchange):
         symbol = None
         if market:
             symbol = market['symbol']
-        last = self.safe_float(ticker, 'LastPrice')
+        last = self.safe_number(ticker, 'LastPrice')
         return {
             'symbol': symbol,
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
-            'high': self.safe_float(ticker, 'DayHighestPrice'),
-            'low': self.safe_float(ticker, 'DayLowestPrice'),
-            'bid': self.safe_float(ticker, 'CurrentHighestBidPrice'),
+            'high': self.safe_number(ticker, 'DayHighestPrice'),
+            'low': self.safe_number(ticker, 'DayLowestPrice'),
+            'bid': self.safe_number(ticker, 'CurrentHighestBidPrice'),
             'bidVolume': None,
-            'ask': self.safe_float(ticker, 'CurrentLowestOfferPrice'),
+            'ask': self.safe_number(ticker, 'CurrentLowestOfferPrice'),
             'askVolume': None,
             'vwap': None,
             'open': None,
@@ -160,8 +162,8 @@ class independentreserve(Exchange):
             'previousClose': None,
             'change': None,
             'percentage': None,
-            'average': self.safe_float(ticker, 'DayAvgPrice'),
-            'baseVolume': self.safe_float(ticker, 'DayVolumeXbtInSecondaryCurrrency'),
+            'average': self.safe_number(ticker, 'DayAvgPrice'),
+            'baseVolume': self.safe_number(ticker, 'DayVolumeXbtInSecondaryCurrrency'),
             'quoteVolume': None,
             'info': ticker,
         }
@@ -178,6 +180,8 @@ class independentreserve(Exchange):
 
     def parse_order(self, order, market=None):
         #
+        # fetchOrder
+        #
         #     {
         #         "OrderGuid": "c7347e4c-b865-4c94-8f74-d934d4b0b177",
         #         "CreatedTimestampUtc": "2014-09-23T12:39:34.3817763Z",
@@ -192,9 +196,26 @@ class independentreserve(Exchange):
         #         "SecondaryCurrencyCode": "Usd"
         #     }
         #
+        # fetchOpenOrders & fetchClosedOrders
+        #
+        #     {
+        #         "OrderGuid": "b8f7ad89-e4e4-4dfe-9ea3-514d38b5edb3",
+        #         "CreatedTimestampUtc": "2020-09-08T03:04:18.616367Z",
+        #         "OrderType": "LimitOffer",
+        #         "Volume": 0.0005,
+        #         "Outstanding": 0.0005,
+        #         "Price": 113885.83,
+        #         "AvgPrice": 113885.83,
+        #         "Value": 56.94,
+        #         "Status": "Open",
+        #         "PrimaryCurrencyCode": "Xbt",
+        #         "SecondaryCurrencyCode": "Usd",
+        #         "FeePercent": 0.005,
+        #     }
+        #
         symbol = None
         baseId = self.safe_string(order, 'PrimaryCurrencyCode')
-        quoteId = self.safe_string(order, 'PrimaryCurrencyCode')
+        quoteId = self.safe_string(order, 'SecondaryCurrencyCode')
         base = None
         quote = None
         if (baseId is not None) and (quoteId is not None):
@@ -205,29 +226,24 @@ class independentreserve(Exchange):
             symbol = market['symbol']
             base = market['base']
             quote = market['quote']
-        orderType = self.safe_value(order, 'Type')
-        if orderType.find('Market') >= 0:
-            orderType = 'market'
-        elif orderType.find('Limit') >= 0:
-            orderType = 'limit'
+        orderType = self.safe_string_2(order, 'Type', 'OrderType')
         side = None
         if orderType.find('Bid') >= 0:
             side = 'buy'
         elif orderType.find('Offer') >= 0:
             side = 'sell'
+        if orderType.find('Market') >= 0:
+            orderType = 'market'
+        elif orderType.find('Limit') >= 0:
+            orderType = 'limit'
         timestamp = self.parse8601(self.safe_string(order, 'CreatedTimestampUtc'))
-        amount = self.safe_float(order, 'VolumeOrdered')
-        if amount is None:
-            amount = self.safe_float(order, 'Volume')
-        filled = self.safe_float(order, 'VolumeFilled')
-        remaining = None
-        feeRate = self.safe_float(order, 'FeePercent')
+        amount = self.safe_number_2(order, 'VolumeOrdered', 'Volume')
+        filled = self.safe_number(order, 'VolumeFilled')
+        remaining = self.safe_number(order, 'Outstanding')
+        feeRate = self.safe_number(order, 'FeePercent')
         feeCost = None
-        if amount is not None:
-            if filled is not None:
-                remaining = amount - filled
-                if feeRate is not None:
-                    feeCost = feeRate * filled
+        if feeRate is not None:
+            feeCost = feeRate * filled
         fee = {
             'rate': feeRate,
             'cost': feeCost,
@@ -235,10 +251,10 @@ class independentreserve(Exchange):
         }
         id = self.safe_string(order, 'OrderGuid')
         status = self.parse_order_status(self.safe_string(order, 'Status'))
-        cost = self.safe_float(order, 'Value')
-        average = self.safe_float(order, 'AvgPrice')
-        price = self.safe_float(order, 'Price', average)
-        return {
+        cost = self.safe_number(order, 'Value')
+        average = self.safe_number(order, 'AvgPrice')
+        price = self.safe_number(order, 'Price')
+        return self.safe_order({
             'info': order,
             'id': id,
             'clientOrderId': None,
@@ -247,8 +263,11 @@ class independentreserve(Exchange):
             'lastTradeTimestamp': None,
             'symbol': symbol,
             'type': orderType,
+            'timeInForce': None,
+            'postOnly': None,
             'side': side,
             'price': price,
+            'stopPrice': None,
             'cost': cost,
             'average': average,
             'amount': amount,
@@ -257,7 +276,7 @@ class independentreserve(Exchange):
             'status': status,
             'fee': fee,
             'trades': None,
-        }
+        })
 
     def parse_order_status(self, status):
         statuses = {
@@ -281,6 +300,38 @@ class independentreserve(Exchange):
             market = self.market(symbol)
         return self.parse_order(response, market)
 
+    def fetch_open_orders(self, symbol=None, since=None, limit=None, params={}):
+        self.load_markets()
+        request = self.ordered({})
+        market = None
+        if symbol is not None:
+            market = self.market(symbol)
+            request['primaryCurrencyCode'] = market['baseId']
+            request['secondaryCurrencyCode'] = market['quoteId']
+        if limit is None:
+            limit = 50
+        request['pageIndex'] = 1
+        request['pageSize'] = limit
+        response = self.privatePostGetOpenOrders(self.extend(request, params))
+        data = self.safe_value(response, 'Data', [])
+        return self.parse_orders(data, market, since, limit)
+
+    def fetch_closed_orders(self, symbol=None, since=None, limit=None, params={}):
+        self.load_markets()
+        request = self.ordered({})
+        market = None
+        if symbol is not None:
+            market = self.market(symbol)
+            request['primaryCurrencyCode'] = market['baseId']
+            request['secondaryCurrencyCode'] = market['quoteId']
+        if limit is None:
+            limit = 50
+        request['pageIndex'] = 1
+        request['pageSize'] = limit
+        response = self.privatePostGetClosedOrders(self.extend(request, params))
+        data = self.safe_value(response, 'Data', [])
+        return self.parse_orders(data, market, since, limit)
+
     def fetch_my_trades(self, symbol=None, since=None, limit=50, params={}):
         self.load_markets()
         pageIndex = self.safe_integer(params, 'pageIndex', 1)
@@ -300,15 +351,18 @@ class independentreserve(Exchange):
         timestamp = self.parse8601(trade['TradeTimestampUtc'])
         id = self.safe_string(trade, 'TradeGuid')
         orderId = self.safe_string(trade, 'OrderGuid')
-        price = self.safe_float_2(trade, 'Price', 'SecondaryCurrencyTradePrice')
-        amount = self.safe_float_2(trade, 'VolumeTraded', 'PrimaryCurrencyAmount')
+        price = self.safe_number_2(trade, 'Price', 'SecondaryCurrencyTradePrice')
+        amount = self.safe_number_2(trade, 'VolumeTraded', 'PrimaryCurrencyAmount')
         cost = None
         if price is not None:
             if amount is not None:
                 cost = price * amount
-        symbol = None
-        if market is not None:
-            symbol = market['symbol']
+        baseId = self.safe_string(trade, 'PrimaryCurrencyCode')
+        quoteId = self.safe_string(trade, 'SecondaryCurrencyCode')
+        marketId = None
+        if (baseId is not None) and (quoteId is not None):
+            marketId = baseId + '/' + quoteId
+        symbol = self.safe_symbol(marketId, market, '/')
         side = self.safe_string(trade, 'OrderType')
         if side is not None:
             if side.find('Bid') >= 0:

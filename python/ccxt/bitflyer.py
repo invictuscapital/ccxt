@@ -183,8 +183,8 @@ class bitflyer(Exchange):
             currencyId = self.safe_string(balance, 'currency_code')
             code = self.safe_currency_code(currencyId)
             account = self.account()
-            account['total'] = self.safe_float(balance, 'amount')
-            account['free'] = self.safe_float(balance, 'available')
+            account['total'] = self.safe_number(balance, 'amount')
+            account['free'] = self.safe_number(balance, 'available')
             result[code] = account
         return self.parse_balance(result)
 
@@ -203,16 +203,16 @@ class bitflyer(Exchange):
         }
         ticker = self.publicGetGetticker(self.extend(request, params))
         timestamp = self.parse8601(self.safe_string(ticker, 'timestamp'))
-        last = self.safe_float(ticker, 'ltp')
+        last = self.safe_number(ticker, 'ltp')
         return {
             'symbol': symbol,
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
             'high': None,
             'low': None,
-            'bid': self.safe_float(ticker, 'best_bid'),
+            'bid': self.safe_number(ticker, 'best_bid'),
             'bidVolume': None,
-            'ask': self.safe_float(ticker, 'best_ask'),
+            'ask': self.safe_number(ticker, 'best_ask'),
             'askVolume': None,
             'vwap': None,
             'open': None,
@@ -222,7 +222,7 @@ class bitflyer(Exchange):
             'change': None,
             'percentage': None,
             'average': None,
-            'baseVolume': self.safe_float(ticker, 'volume_by_product'),
+            'baseVolume': self.safe_number(ticker, 'volume_by_product'),
             'quoteVolume': None,
             'info': ticker,
         }
@@ -240,8 +240,8 @@ class bitflyer(Exchange):
         if order is None:
             order = self.safe_string(trade, 'child_order_acceptance_id')
         timestamp = self.parse8601(self.safe_string(trade, 'exec_date'))
-        price = self.safe_float(trade, 'price')
-        amount = self.safe_float(trade, 'size')
+        price = self.safe_number(trade, 'price')
+        amount = self.safe_number(trade, 'size')
         cost = None
         if amount is not None:
             if price is not None:
@@ -314,23 +314,17 @@ class bitflyer(Exchange):
 
     def parse_order(self, order, market=None):
         timestamp = self.parse8601(self.safe_string(order, 'child_order_date'))
-        amount = self.safe_float(order, 'size')
-        remaining = self.safe_float(order, 'outstanding_size')
-        filled = self.safe_float(order, 'executed_size')
-        price = self.safe_float(order, 'price')
-        cost = price * filled
+        amount = self.safe_number(order, 'size')
+        remaining = self.safe_number(order, 'outstanding_size')
+        filled = self.safe_number(order, 'executed_size')
+        price = self.safe_number(order, 'price')
         status = self.parse_order_status(self.safe_string(order, 'child_order_state'))
         type = self.safe_string_lower(order, 'child_order_type')
         side = self.safe_string_lower(order, 'side')
-        symbol = None
-        if market is None:
-            marketId = self.safe_string(order, 'product_code')
-            if marketId in self.markets_by_id:
-                market = self.markets_by_id[marketId]
-        if market is not None:
-            symbol = market['symbol']
+        marketId = self.safe_string(order, 'product_code')
+        symbol = self.safe_symbol(marketId, market)
         fee = None
-        feeCost = self.safe_float(order, 'total_commission')
+        feeCost = self.safe_number(order, 'total_commission')
         if feeCost is not None:
             fee = {
                 'cost': feeCost,
@@ -338,7 +332,7 @@ class bitflyer(Exchange):
                 'rate': None,
             }
         id = self.safe_string(order, 'child_order_acceptance_id')
-        return {
+        return self.safe_order({
             'id': id,
             'clientOrderId': None,
             'info': order,
@@ -348,16 +342,19 @@ class bitflyer(Exchange):
             'status': status,
             'symbol': symbol,
             'type': type,
+            'timeInForce': None,
+            'postOnly': None,
             'side': side,
             'price': price,
-            'cost': cost,
+            'stopPrice': None,
+            'cost': None,
             'amount': amount,
             'filled': filled,
             'remaining': remaining,
             'fee': fee,
             'average': None,
             'trades': None,
-        }
+        })
 
     def fetch_orders(self, symbol=None, since=None, limit=100, params={}):
         if symbol is None:
@@ -397,7 +394,7 @@ class bitflyer(Exchange):
 
     def fetch_my_trades(self, symbol=None, since=None, limit=None, params={}):
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' fetchMyTrades requires a `symbol` argument')
+            raise ArgumentsRequired(self.id + ' fetchMyTrades() requires a `symbol` argument')
         self.load_markets()
         market = self.market(symbol)
         request = {
@@ -407,6 +404,34 @@ class bitflyer(Exchange):
             request['count'] = limit
         response = self.privateGetGetexecutions(self.extend(request, params))
         return self.parse_trades(response, market, since, limit)
+
+    def fetch_positions(self, symbols=None, params={}):
+        if symbols is None:
+            raise ArgumentsRequired(self.id + ' fetchPositions() requires a `symbols` argument, exactly one symbol in an array')
+        self.load_markets()
+        request = {
+            'product_code': self.market_ids(symbols),
+        }
+        response = self.privateGetpositions(self.extend(request, params))
+        #
+        #     [
+        #         {
+        #             "product_code": "FX_BTC_JPY",
+        #             "side": "BUY",
+        #             "price": 36000,
+        #             "size": 10,
+        #             "commission": 0,
+        #             "swap_point_accumulate": -35,
+        #             "require_collateral": 120000,
+        #             "open_date": "2015-11-03T10:04:45.011",
+        #             "leverage": 3,
+        #             "pnl": 965,
+        #             "sfd": -0.5
+        #         }
+        #     ]
+        #
+        # todo unify parsePosition/parsePositions
+        return response
 
     def withdraw(self, code, amount, address, tag=None, params={}):
         self.check_address(address)

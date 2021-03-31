@@ -106,7 +106,7 @@ class btctradeua(Exchange):
             currencyId = self.safe_string(balance, 'currency')
             code = self.safe_currency_code(currencyId)
             account = self.account()
-            account['total'] = self.safe_float(balance, 'balance')
+            account['total'] = self.safe_number(balance, 'balance')
             result[code] = account
         return self.parse_balance(result)
 
@@ -229,8 +229,8 @@ class btctradeua(Exchange):
         id = self.safe_string(trade, 'id')
         type = 'limit'
         side = self.safe_string(trade, 'type')
-        price = self.safe_float(trade, 'price')
-        amount = self.safe_float(trade, 'amnt_trade')
+        price = self.safe_number(trade, 'price')
+        amount = self.safe_number(trade, 'amnt_trade')
         cost = None
         if amount is not None:
             if price is not None:
@@ -303,11 +303,14 @@ class btctradeua(Exchange):
             'status': 'open',
             'symbol': symbol,
             'type': None,
+            'timeInForce': None,
+            'postOnly': None,
             'side': self.safe_string(order, 'type'),
-            'price': self.safe_float(order, 'price'),
-            'amount': self.safe_float(order, 'amnt_trade'),
+            'price': self.safe_number(order, 'price'),
+            'stopPrice': None,
+            'amount': self.safe_number(order, 'amnt_trade'),
             'filled': 0,
-            'remaining': self.safe_float(order, 'amnt_trade'),
+            'remaining': self.safe_number(order, 'amnt_trade'),
             'trades': None,
             'info': order,
             'cost': None,
@@ -317,7 +320,7 @@ class btctradeua(Exchange):
 
     def fetch_open_orders(self, symbol=None, since=None, limit=None, params={}):
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' fetchOpenOrders requires a symbol argument')
+            raise ArgumentsRequired(self.id + ' fetchOpenOrders() requires a symbol argument')
         self.load_markets()
         market = self.market(symbol)
         request = {

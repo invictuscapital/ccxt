@@ -127,9 +127,9 @@ class btcturk extends Exchange {
             $used = $currency['id'] . '_reserved';
             if (is_array($response) && array_key_exists($free, $response)) {
                 $account = $this->account();
-                $account['free'] = $this->safe_float($response, $free);
-                $account['total'] = $this->safe_float($response, $total);
-                $account['used'] = $this->safe_float($response, $used);
+                $account['free'] = $this->safe_number($response, $free);
+                $account['total'] = $this->safe_number($response, $total);
+                $account['used'] = $this->safe_number($response, $used);
                 $result[$code] = $account;
             }
         }
@@ -153,26 +153,26 @@ class btcturk extends Exchange {
             $symbol = $market['symbol'];
         }
         $timestamp = $this->safe_timestamp($ticker, 'timestamp');
-        $last = $this->safe_float($ticker, 'last');
+        $last = $this->safe_number($ticker, 'last');
         return array(
             'symbol' => $symbol,
             'timestamp' => $timestamp,
             'datetime' => $this->iso8601($timestamp),
-            'high' => $this->safe_float($ticker, 'high'),
-            'low' => $this->safe_float($ticker, 'low'),
-            'bid' => $this->safe_float($ticker, 'bid'),
+            'high' => $this->safe_number($ticker, 'high'),
+            'low' => $this->safe_number($ticker, 'low'),
+            'bid' => $this->safe_number($ticker, 'bid'),
             'bidVolume' => null,
-            'ask' => $this->safe_float($ticker, 'ask'),
+            'ask' => $this->safe_number($ticker, 'ask'),
             'askVolume' => null,
             'vwap' => null,
-            'open' => $this->safe_float($ticker, 'open'),
+            'open' => $this->safe_number($ticker, 'open'),
             'close' => $last,
             'last' => $last,
             'previousClose' => null,
             'change' => null,
             'percentage' => null,
-            'average' => $this->safe_float($ticker, 'average'),
-            'baseVolume' => $this->safe_float($ticker, 'volume'),
+            'average' => $this->safe_number($ticker, 'average'),
+            'baseVolume' => $this->safe_number($ticker, 'volume'),
             'quoteVolume' => null,
             'info' => $ticker,
         );
@@ -193,7 +193,7 @@ class btcturk extends Exchange {
             }
             $result[$symbol] = $this->parse_ticker($ticker, $market);
         }
-        return $result;
+        return $this->filter_by_array($result, 'symbol', $symbols);
     }
 
     public function fetch_ticker($symbol, $params = array ()) {
@@ -206,8 +206,8 @@ class btcturk extends Exchange {
     public function parse_trade($trade, $market = null) {
         $timestamp = $this->safe_timestamp($trade, 'date');
         $id = $this->safe_string($trade, 'tid');
-        $price = $this->safe_float($trade, 'price');
-        $amount = $this->safe_float($trade, 'amount');
+        $price = $this->safe_number($trade, 'price');
+        $amount = $this->safe_number($trade, 'amount');
         $cost = null;
         if ($amount !== null) {
             if ($price !== null) {
@@ -249,11 +249,11 @@ class btcturk extends Exchange {
     public function parse_ohlcv($ohlcv, $market = null) {
         return array(
             $this->parse8601($this->safe_string($ohlcv, 'Time')),
-            $this->safe_float($ohlcv, 'Open'),
-            $this->safe_float($ohlcv, 'High'),
-            $this->safe_float($ohlcv, 'Low'),
-            $this->safe_float($ohlcv, 'Close'),
-            $this->safe_float($ohlcv, 'Volume'),
+            $this->safe_number($ohlcv, 'Open'),
+            $this->safe_number($ohlcv, 'High'),
+            $this->safe_number($ohlcv, 'Low'),
+            $this->safe_number($ohlcv, 'Close'),
+            $this->safe_number($ohlcv, 'Volume'),
         );
     }
 
@@ -277,7 +277,7 @@ class btcturk extends Exchange {
         );
         if ($type === 'market') {
             if (!(is_array($params) && array_key_exists('Total', $params))) {
-                throw new ExchangeError($this->id . ' createOrder requires the "Total" extra parameter for market orders ($amount and $price are both ignored)');
+                throw new ExchangeError($this->id . ' createOrder() requires the "Total" extra parameter for market orders ($amount and $price are both ignored)');
             }
         } else {
             $request['Price'] = $price;
@@ -320,7 +320,7 @@ class btcturk extends Exchange {
             $headers = array(
                 'X-PCK' => $this->apiKey,
                 'X-Stamp' => $nonce,
-                'X-Signature' => base64_encode($this->hmac($this->encode($auth), $secret, 'sha256', 'binary')),
+                'X-Signature' => $this->hmac($this->encode($auth), $secret, 'sha256', 'base64'),
                 'Content-Type' => 'application/x-www-form-urlencoded',
             );
         }

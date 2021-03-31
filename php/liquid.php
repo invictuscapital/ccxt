@@ -48,7 +48,7 @@ class liquid extends Exchange {
                     'https://developers.liquid.com',
                 ),
                 'fees' => 'https://help.liquid.com/getting-started-with-liquid/the-platform/fee-structure',
-                'referral' => 'https://www.liquid.com?affiliate=SbzC62lt30976',
+                'referral' => 'https://www.liquid.com/sign-up/?affiliate=SbzC62lt30976',
             ),
             'api' => array(
                 'public' => array(
@@ -191,6 +191,7 @@ class liquid extends Exchange {
                 'must_be_positive' => '\\ccxt\\InvalidOrder',
                 'less_than_order_size' => '\\ccxt\\InvalidOrder',
                 'price_too_high' => '\\ccxt\\InvalidOrder',
+                'price_too_small' => '\\ccxt\\InvalidOrder', // array("errors":array("order":["price_too_small"]))
             ),
             'commonCurrencies' => array(
                 'WIN' => 'WCOIN',
@@ -233,14 +234,15 @@ class liquid extends Exchange {
             $amountPrecision = $this->safe_integer($currency, 'display_precision');
             $pricePrecision = $this->safe_integer($currency, 'quoting_precision');
             $precision = max ($amountPrecision, $pricePrecision);
+            $decimalPrecision = 1 / pow(10, $precision);
             $result[$code] = array(
                 'id' => $id,
                 'code' => $code,
                 'info' => $currency,
                 'name' => $code,
                 'active' => $active,
-                'fee' => $this->safe_float($currency, 'withdrawal_fee'),
-                'precision' => $precision,
+                'fee' => $this->safe_number($currency, 'withdrawal_fee'),
+                'precision' => $decimalPrecision,
                 'limits' => array(
                     'amount' => array(
                         'min' => pow(10, -$amountPrecision),
@@ -255,7 +257,7 @@ class liquid extends Exchange {
                         'max' => null,
                     ),
                     'withdraw' => array(
-                        'min' => $this->safe_float($currency, 'minimum_withdrawal'),
+                        'min' => $this->safe_number($currency, 'minimum_withdrawal'),
                         'max' => null,
                     ),
                 ),
@@ -380,19 +382,19 @@ class liquid extends Exchange {
             $maker = $this->fees['trading']['maker'];
             $taker = $this->fees['trading']['taker'];
             if ($type === 'swap') {
-                $maker = $this->safe_float($market, 'maker_fee', $this->fees['trading']['maker']);
-                $taker = $this->safe_float($market, 'taker_fee', $this->fees['trading']['taker']);
+                $maker = $this->safe_number($market, 'maker_fee', $this->fees['trading']['maker']);
+                $taker = $this->safe_number($market, 'taker_fee', $this->fees['trading']['taker']);
             }
             $disabled = $this->safe_value($market, 'disabled', false);
             $active = !$disabled;
             $baseCurrency = $this->safe_value($currenciesByCode, $base);
             $precision = array(
                 'amount' => 0.00000001,
-                'price' => $this->safe_float($market, 'tick_size'),
+                'price' => $this->safe_number($market, 'tick_size'),
             );
             $minAmount = null;
             if ($baseCurrency !== null) {
-                $minAmount = $this->safe_float($baseCurrency['info'], 'minimum_order_quantity');
+                $minAmount = $this->safe_number($baseCurrency['info'], 'minimum_order_quantity');
             }
             $limits = array(
                 'amount' => array(
@@ -474,8 +476,8 @@ class liquid extends Exchange {
             $currencyId = $this->safe_string($balance, 'currency');
             $code = $this->safe_currency_code($currencyId);
             $account = $this->account();
-            $account['total'] = $this->safe_float($balance, 'balance');
-            $account['used'] = $this->safe_float($balance, 'reserved_balance');
+            $account['total'] = $this->safe_number($balance, 'balance');
+            $account['used'] = $this->safe_number($balance, 'reserved_balance');
             $result[$code] = $account;
         }
         for ($i = 0; $i < count($fiat); $i++) {
@@ -483,8 +485,8 @@ class liquid extends Exchange {
             $currencyId = $this->safe_string($balance, 'currency');
             $code = $this->safe_currency_code($currencyId);
             $account = $this->account();
-            $account['total'] = $this->safe_float($balance, 'balance');
-            $account['used'] = $this->safe_float($balance, 'reserved_balance');
+            $account['total'] = $this->safe_number($balance, 'balance');
+            $account['used'] = $this->safe_number($balance, 'reserved_balance');
             $result[$code] = $account;
         }
         return $this->parse_balance($result);
@@ -506,7 +508,7 @@ class liquid extends Exchange {
             if ($ticker['last_traded_price']) {
                 $length = is_array($ticker['last_traded_price']) ? count($ticker['last_traded_price']) : 0;
                 if ($length > 0) {
-                    $last = $this->safe_float($ticker, 'last_traded_price');
+                    $last = $this->safe_number($ticker, 'last_traded_price');
                 }
             }
         }
@@ -531,7 +533,7 @@ class liquid extends Exchange {
         $change = null;
         $percentage = null;
         $average = null;
-        $open = $this->safe_float($ticker, 'last_price_24h');
+        $open = $this->safe_number($ticker, 'last_price_24h');
         if ($open !== null && $last !== null) {
             $change = $last - $open;
             $average = $this->sum($last, $open) / 2;
@@ -543,11 +545,11 @@ class liquid extends Exchange {
             'symbol' => $symbol,
             'timestamp' => $timestamp,
             'datetime' => $this->iso8601($timestamp),
-            'high' => $this->safe_float($ticker, 'high_market_ask'),
-            'low' => $this->safe_float($ticker, 'low_market_bid'),
-            'bid' => $this->safe_float($ticker, 'market_bid'),
+            'high' => $this->safe_number($ticker, 'high_market_ask'),
+            'low' => $this->safe_number($ticker, 'low_market_bid'),
+            'bid' => $this->safe_number($ticker, 'market_bid'),
             'bidVolume' => null,
-            'ask' => $this->safe_float($ticker, 'market_ask'),
+            'ask' => $this->safe_number($ticker, 'market_ask'),
             'askVolume' => null,
             'vwap' => null,
             'open' => $open,
@@ -557,7 +559,7 @@ class liquid extends Exchange {
             'change' => $change,
             'percentage' => $percentage,
             'average' => $average,
-            'baseVolume' => $this->safe_float($ticker, 'volume_24h'),
+            'baseVolume' => $this->safe_number($ticker, 'volume_24h'),
             'quoteVolume' => null,
             'info' => $ticker,
         );
@@ -572,7 +574,7 @@ class liquid extends Exchange {
             $symbol = $ticker['symbol'];
             $result[$symbol] = $ticker;
         }
-        return $result;
+        return $this->filter_by_array($result, 'symbol', $symbols);
     }
 
     public function fetch_ticker($symbol, $params = array ()) {
@@ -604,8 +606,8 @@ class liquid extends Exchange {
             $takerOrMaker = ($takerSide === $mySide) ? 'taker' : 'maker';
         }
         $cost = null;
-        $price = $this->safe_float($trade, 'price');
-        $amount = $this->safe_float($trade, 'quantity');
+        $price = $this->safe_number($trade, 'price');
+        $amount = $this->safe_number($trade, 'quantity');
         if ($price !== null) {
             if ($amount !== null) {
                 $cost = $price * $amount;
@@ -644,7 +646,7 @@ class liquid extends Exchange {
         }
         if ($since !== null) {
             // timestamp should be in seconds, whereas we use milliseconds in $since and everywhere
-            $request['timestamp'] = intval ($since / 1000);
+            $request['timestamp'] = intval($since / 1000);
         }
         $response = $this->publicGetExecutions (array_merge($request, $params));
         $result = ($since !== null) ? $response : $response['models'];
@@ -727,7 +729,7 @@ class liquid extends Exchange {
     public function edit_order($id, $symbol, $type, $side, $amount, $price = null, $params = array ()) {
         $this->load_markets();
         if ($price === null) {
-            throw new ArgumentsRequired($this->id . ' editOrder requires the $price argument');
+            throw new ArgumentsRequired($this->id . ' editOrder() requires the $price argument');
         }
         $request = array(
             'order' => array(
@@ -813,9 +815,9 @@ class liquid extends Exchange {
         $marketId = $this->safe_string($order, 'product_id');
         $market = $this->safe_value($this->markets_by_id, $marketId);
         $status = $this->parse_order_status($this->safe_string($order, 'status'));
-        $amount = $this->safe_float($order, 'quantity');
-        $filled = $this->safe_float($order, 'filled_quantity');
-        $price = $this->safe_float($order, 'price');
+        $amount = $this->safe_number($order, 'quantity');
+        $filled = $this->safe_number($order, 'filled_quantity');
+        $price = $this->safe_number($order, 'price');
         $symbol = null;
         $feeCurrency = null;
         if ($market !== null) {
@@ -825,7 +827,7 @@ class liquid extends Exchange {
         $type = $this->safe_string($order, 'order_type');
         $tradeCost = 0;
         $tradeFilled = 0;
-        $average = $this->safe_float($order, 'average_price');
+        $average = $this->safe_number($order, 'average_price');
         $trades = $this->parse_trades($this->safe_value($order, 'executions', array()), $market, null, null, array(
             'order' => $orderId,
             'type' => $type,
@@ -867,10 +869,13 @@ class liquid extends Exchange {
             'datetime' => $this->iso8601($timestamp),
             'lastTradeTimestamp' => $lastTradeTimestamp,
             'type' => $type,
+            'timeInForce' => null,
+            'postOnly' => null,
             'status' => $status,
             'symbol' => $symbol,
             'side' => $side,
             'price' => $price,
+            'stopPrice' => null,
             'amount' => $amount,
             'filled' => $filled,
             'cost' => $cost,
@@ -879,7 +884,7 @@ class liquid extends Exchange {
             'trades' => $trades,
             'fee' => array(
                 'currency' => $feeCurrency,
-                'cost' => $this->safe_float($order, 'order_fee'),
+                'cost' => $this->safe_number($order, 'order_fee'),
             ),
             'info' => $order,
         );
@@ -1034,7 +1039,7 @@ class liquid extends Exchange {
         $updated = $this->safe_timestamp($transaction, 'updated_at');
         $type = 'withdrawal';
         $status = $this->parse_transaction_status($this->safe_string($transaction, 'state'));
-        $amount = $this->safe_float($transaction, 'amount');
+        $amount = $this->safe_number($transaction, 'amount');
         return array(
             'info' => $transaction,
             'id' => $id,

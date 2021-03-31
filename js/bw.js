@@ -185,7 +185,7 @@ module.exports = class bw extends Exchange {
             const symbol = base + '/' + quote;
             const state = this.safeInteger (market, 'state');
             const active = (state === 1);
-            const fee = this.safeFloat (market, 'defaultFee');
+            const fee = this.safeNumber (market, 'defaultFee');
             result.push ({
                 'id': id,
                 'active': active,
@@ -206,7 +206,7 @@ module.exports = class bw extends Exchange {
                 },
                 'limits': {
                     'amount': {
-                        'min': this.safeFloat (market, 'minAmount'),
+                        'min': this.safeNumber (market, 'minAmount'),
                         'max': undefined,
                     },
                     'price': {
@@ -292,11 +292,11 @@ module.exports = class bw extends Exchange {
                 'info': currency,
                 'name': code,
                 'active': active,
-                'fee': this.safeFloat (currency, 'drawFee'),
+                'fee': this.safeNumber (currency, 'drawFee'),
                 'precision': undefined,
                 'limits': {
                     'amount': {
-                        'min': this.safeFloat (currency, 'limitAmount', 0),
+                        'min': this.safeNumber (currency, 'limitAmount', 0),
                         'max': undefined,
                     },
                     'price': {
@@ -309,7 +309,7 @@ module.exports = class bw extends Exchange {
                     },
                     'withdraw': {
                         'min': undefined,
-                        'max': this.safeFloat (currency, 'onceDrawLimit'),
+                        'max': this.safeNumber (currency, 'onceDrawLimit'),
                     },
                 },
             };
@@ -333,16 +333,8 @@ module.exports = class bw extends Exchange {
         //         "469849357.2364"  // quote volume
         //     ]
         //
-        let symbol = undefined;
         const marketId = this.safeString (ticker, 0);
-        if (marketId in this.markets_by_id) {
-            market = this.markets_by_id[marketId];
-        }
-        if (market !== undefined) {
-            symbol = market['symbol'];
-        } else {
-            symbol = marketId;
-        }
+        const symbol = this.safeSymbol (marketId, market);
         const timestamp = this.milliseconds ();
         const close = parseFloat (this.safeValue (ticker, 1));
         const bid = this.safeValue (ticker, 'bid', {});
@@ -354,9 +346,9 @@ module.exports = class bw extends Exchange {
             'high': parseFloat (this.safeValue (ticker, 2)),
             'low': parseFloat (this.safeValue (ticker, 3)),
             'bid': parseFloat (this.safeValue (ticker, 7)),
-            'bidVolume': this.safeFloat (bid, 'quantity'),
+            'bidVolume': this.safeNumber (bid, 'quantity'),
             'ask': parseFloat (this.safeValue (ticker, 8)),
-            'askVolume': this.safeFloat (ask, 'quantity'),
+            'askVolume': this.safeNumber (ask, 'quantity'),
             'vwap': undefined,
             'open': undefined,
             'close': close,
@@ -430,7 +422,7 @@ module.exports = class bw extends Exchange {
                 result[symbol] = ticker;
             }
         }
-        return result;
+        return this.filterByArray (result, 'symbol', symbols);
     }
 
     async fetchOrderBook (symbol, limit = undefined, params = {}) {
@@ -485,8 +477,8 @@ module.exports = class bw extends Exchange {
         //     ...
         //
         const timestamp = this.safeTimestamp (trade, 2);
-        const price = this.safeFloat (trade, 5);
-        const amount = this.safeFloat (trade, 6);
+        const price = this.safeNumber (trade, 5);
+        const amount = this.safeNumber (trade, 6);
         const marketId = this.safeString (trade, 1);
         let symbol = undefined;
         if (marketId !== undefined) {
@@ -579,11 +571,11 @@ module.exports = class bw extends Exchange {
         //
         return [
             this.safeTimestamp (ohlcv, 3),
-            this.safeFloat (ohlcv, 4),
-            this.safeFloat (ohlcv, 5),
-            this.safeFloat (ohlcv, 6),
-            this.safeFloat (ohlcv, 7),
-            this.safeFloat (ohlcv, 8),
+            this.safeNumber (ohlcv, 4),
+            this.safeNumber (ohlcv, 5),
+            this.safeNumber (ohlcv, 6),
+            this.safeNumber (ohlcv, 7),
+            this.safeNumber (ohlcv, 8),
         ];
     }
 
@@ -641,8 +633,8 @@ module.exports = class bw extends Exchange {
             const currencyId = this.safeString (balance, 'currencyTypeId');
             const code = this.safeCurrencyCode (currencyId);
             const account = this.account ();
-            account['free'] = this.safeFloat (balance, 'amount');
-            account['used'] = this.safeFloat (balance, 'freeze');
+            account['free'] = this.safeNumber (balance, 'amount');
+            account['used'] = this.safeNumber (balance, 'freeze');
             result[code] = account;
         }
         return this.parseBalance (result);
@@ -733,9 +725,7 @@ module.exports = class bw extends Exchange {
         //     }
         //
         const marketId = this.safeString (order, 'marketId');
-        if (marketId in this.markets_by_id) {
-            market = this.markets_by_id[marketId];
-        }
+        const symbol = this.safeSymbol (marketId, market);
         const timestamp = this.safeInteger (order, 'createTime');
         let side = this.safeString (order, 'type');
         if (side === '0') {
@@ -743,35 +733,26 @@ module.exports = class bw extends Exchange {
         } else if (side === '1') {
             side = 'buy';
         }
-        const amount = this.safeFloat (order, 'amount');
-        const price = this.safeFloat (order, 'price');
-        const filled = this.safeFloat (order, 'completeAmount');
-        let remaining = this.safeFloat2 (order, 'availabelAmount', 'availableAmount'); // typo in the docs or in the API, availabel vs available
-        let cost = this.safeFloat (order, 'totalMoney');
-        if (filled !== undefined) {
-            if (amount !== undefined) {
-                if (remaining === undefined) {
-                    remaining = amount - filled;
-                }
-            }
-            if (cost === undefined) {
-                if (price !== undefined) {
-                    cost = filled * cost;
-                }
-            }
-        }
+        const amount = this.safeNumber (order, 'amount');
+        const price = this.safeNumber (order, 'price');
+        const filled = this.safeNumber (order, 'completeAmount');
+        const remaining = this.safeNumber2 (order, 'availabelAmount', 'availableAmount'); // typo in the docs or in the API, availabel vs available
+        const cost = this.safeNumber (order, 'totalMoney');
         const status = this.parseOrderStatus (this.safeString (order, 'status'));
-        return {
+        return this.safeOrder ({
             'info': order,
             'id': this.safeString (order, 'entrustId'),
             'clientOrderId': undefined,
             'timestamp': timestamp,
             'datetime': this.iso8601 (timestamp),
             'lastTradeTimestamp': undefined,
-            'symbol': this.safeString (market, 'symbol'),
+            'symbol': symbol,
             'type': 'limit',
+            'timeInForce': undefined,
+            'postOnly': undefined,
             'side': side,
             'price': price,
+            'stopPrice': undefined,
             'amount': amount,
             'cost': cost,
             'average': undefined,
@@ -780,12 +761,12 @@ module.exports = class bw extends Exchange {
             'status': status,
             'fee': undefined,
             'trades': undefined,
-        };
+        });
     }
 
     async fetchOrder (id, symbol = undefined, params = {}) {
         if (symbol === undefined) {
-            throw new ArgumentsRequired (this.id + ' fetchOrder requires a symbol argument');
+            throw new ArgumentsRequired (this.id + ' fetchOrder() requires a symbol argument');
         }
         await this.loadMarkets ();
         const market = this.market (symbol);
@@ -820,7 +801,7 @@ module.exports = class bw extends Exchange {
 
     async cancelOrder (id, symbol = undefined, params = {}) {
         if (symbol === undefined) {
-            throw new ArgumentsRequired (this.id + ' cancelOrder requires a symbol argument');
+            throw new ArgumentsRequired (this.id + ' cancelOrder() requires a symbol argument');
         }
         await this.loadMarkets ();
         const market = this.market (symbol);
@@ -1076,12 +1057,12 @@ module.exports = class bw extends Exchange {
             code = currency['code'];
         }
         const type = ('depositId' in transaction) ? 'deposit' : 'withdrawal';
-        const amount = this.safeFloat2 (transaction, 'actuallyAmount', 'amount');
+        const amount = this.safeNumber2 (transaction, 'actuallyAmount', 'amount');
         const status = this.parseTransactionStatus (this.safeString2 (transaction, 'verifyStatus', 'state'));
         const timestamp = this.safeInteger (transaction, 'createTime');
         const txid = this.safeString (transaction, 'txId');
         let fee = undefined;
-        const feeCost = this.safeFloat (transaction, 'fees');
+        const feeCost = this.safeNumber (transaction, 'fees');
         if (feeCost !== undefined) {
             fee = {
                 'cost': feeCost,

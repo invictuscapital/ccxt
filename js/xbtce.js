@@ -153,9 +153,9 @@ module.exports = class xbtce extends Exchange {
             const currencyId = this.safeString (balance, 'Currency');
             const code = this.safeCurrencyCode (currencyId);
             const account = {
-                'free': this.safeFloat (balance, 'FreeAmount'),
-                'used': this.safeFloat (balance, 'LockedAmount'),
-                'total': this.safeFloat (balance, 'Amount'),
+                'free': this.safeNumber (balance, 'FreeAmount'),
+                'used': this.safeNumber (balance, 'LockedAmount'),
+                'total': this.safeNumber (balance, 'Amount'),
             };
             result[code] = account;
         }
@@ -243,7 +243,7 @@ module.exports = class xbtce extends Exchange {
             const ticker = tickers[id];
             result[symbol] = this.parseTicker (ticker, market);
         }
-        return result;
+        return this.filterByArray (result, 'symbol', symbols);
     }
 
     async fetchTicker (symbol, params = {}) {
@@ -271,11 +271,11 @@ module.exports = class xbtce extends Exchange {
     parseOHLCV (ohlcv, market = undefined) {
         return [
             this.safeInteger (ohlcv, 'Timestamp'),
-            this.safeFloat (ohlcv, 'Open'),
-            this.safeFloat (ohlcv, 'High'),
-            this.safeFloat (ohlcv, 'Low'),
-            this.safeFloat (ohlcv, 'Close'),
-            this.safeFloat (ohlcv, 'Volume'),
+            this.safeNumber (ohlcv, 'Open'),
+            this.safeNumber (ohlcv, 'High'),
+            this.safeNumber (ohlcv, 'Low'),
+            this.safeNumber (ohlcv, 'Close'),
+            this.safeNumber (ohlcv, 'Volume'),
         ];
     }
 
@@ -362,7 +362,7 @@ module.exports = class xbtce extends Exchange {
                 auth += body;
             }
             const signature = this.hmac (this.encode (auth), this.encode (this.secret), 'sha256', 'base64');
-            const credentials = this.uid + ':' + this.apiKey + ':' + nonce + ':' + this.decode (signature);
+            const credentials = this.uid + ':' + this.apiKey + ':' + nonce + ':' + signature;
             headers['Authorization'] = 'HMAC ' + credentials;
         }
         return { 'url': url, 'method': method, 'body': body, 'headers': headers };
